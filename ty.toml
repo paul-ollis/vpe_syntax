@@ -1,0 +1,9 @@
+[environment]
+extra-paths = [
+    '/home/paul/.local/lib/python3.11/site-packages',
+    '/home/paul/.vim/pack/vim-vpe',
+    '/home/paul/.vim/pack/vpe_plugins',
+]
+
+[terminal]
+output-format = 'concise'
