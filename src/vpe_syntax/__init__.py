@@ -65,7 +65,7 @@ class Plugin(vpe.CommandHandler, EventHandler):
             if buffer.name.startswith('/[['):
                 continue
 
-            print(f'WinScrolled: {buffer.name}')
+            # print(f'WinScrolled: {buffer.name}')
             store = buffer.store('syntax-sitter')
             highlighter = getattr(store, 'highlighter', None)
             if highlighter is not None:

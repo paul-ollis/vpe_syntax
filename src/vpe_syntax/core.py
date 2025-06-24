@@ -14,18 +14,19 @@ from vpe_sitter.listen import AffectedLines, Listener
 #: A mapping from Tree-sitter syntax names to property names.
 syn_name_to_prop_name: dict[str, str | None] = {
     '_annotation':                None,
-    'attribute':                  None,
+    'attribute':                  'Decorator',
     'boolean':                    'Boolean',
     'comment':                    'Comment',
     'conditional':                'Conditional',
     'constant.builtin':           'Constant',
     'constant':                   'Constant',
-    'constructor':                None,
+    'constructor':                'Constructor',
     'error':                      'Error',
     'function.builtin':           'Function',
     'function.call':              None,
     'function':                   'Function',
     'include':                    'Include',
+    'interpolation':              'Interpolation',
     'keyword':                    'Keyword',
     'keyword.function':           'Keyword',
     'keyword.return':             'Keyword',
@@ -36,58 +37,117 @@ syn_name_to_prop_name: dict[str, str | None] = {
     'parameter':                  None,
     'punctuation.bracket':        None,
     'punctuation.delimiter':      'Operator',
+    'punctuation.special':        'SpecialPunctuation',
     'repeat':                     'Repeat',
     'spell':                      None,
     'string':                     'String',
     'type.builtin':               'Type',
     'type.definition':            None,
     'type':                       'Type',
-    'variable':                   'Identifier',
+    'variable':                   None,
+
+    # These Tree-sitter names have been added to the SCM file by me.
+    'docstring':                  'DocString',
+    'format.identifier':          'FormatIdentifier',
+    'format.specifier':           'FormatSpecifier',
 }
 
 #: A list of standard highlight group names.
 #:
 #: These groups are created as a result of 'syntax on' being executed.
-STANDARD_GROUPS = set((
-    'Added',
-    'Boolean',
-    'Changed',
-    'Character',
-    'Comment',
-    'Conditional',
-    'Constant',
-    'Debug',
-    'Define',
-    'Delimiter',
-    'Error',
-    'Exception',
-    'Float',
-    'Function',
-    'Identifier',
-    'Include',
-    'Keyword',
-    'Label',
-    'Macro',
-    'Number',
-    'Operator',
-    'PreCondit',
-    'PreProc',
-    'Removed',
-    'Repeat',
-    'Special',
-    'SpecialChar',
-    'SpecialComment',
-    'Statement',
-    'StorageClass',
-    'String',
-    'Structure',
-    'Tag',
-    'Todo',
-    'Type',
-    'Typedef',
-    'Underlined',
-))
+STANDARD_GROUPS = (
+    ('Added', 50),
+    ('Boolean', 50),
+    ('Changed', 50),
+    ('Character', 50),
+    ('Comment', 50),
+    ('Conditional', 50),
+    ('Constant', 50),
+    ('Debug', 50),
+    ('Define', 50),
+    ('Delimiter', 50),
+    ('Error', 50),
+    ('Exception', 50),
+    ('Float', 50),
+    ('Function', 50),
+    ('Identifier', 20),
+    ('Include', 50),
+    ('Keyword', 50),
+    ('Label', 50),
+    ('Macro', 50),
+    ('Number', 50),
+    ('Operator', 50),
+    ('PreCondit', 50),
+    ('PreProc', 50),
+    ('Removed', 50),
+    ('Repeat', 50),
+    ('Special', 50),
+    ('SpecialChar', 50),
+    ('SpecialComment', 50),
+    ('Statement', 50),
+    ('StorageClass', 50),
+    ('String', 30),
+    ('Structure', 50),
+    ('Tag', 50),
+    ('Todo', 50),
+    ('Type', 50),
+    ('Typedef', 50),
+    ('Underlined', 50),
+)
 
+# My additional non-standard groups.
+ADDITIONAL_GROUPS: dict[str, dict] = {
+    'Class': {
+         'priority': 50, 'guifg': 'DarkGoldenrod',
+    },
+    'ClassName': {
+         'priority': 50, 'guifg': 'ForestGreen',
+    },
+    'Constructor': {
+         'priority': 60, 'guifg': 'LightSteelBlue', 'gui': 'bold',
+    },
+    'Decorator': {
+         'priority': 50, 'gui': 'italic',
+    },
+    'DocString': {
+         'priority': 50, 'guifg': 'LightSteelBlue',
+    },
+    'FloatNumber': {
+         'priority': 50, 'guifg': 'LightSeaGreen',
+    },
+    'FormatSpecifier': {
+         'priority': 50, 'guifg': 'PaleGreen',
+    },
+    'Interpolation': {
+         'priority': 40, 'guifg': 'LightGrey',
+    },
+    'FormatIdentifier': {
+         'priority': 55, 'guifg': 'Goldenrod',
+    },
+    'FunctionName': {
+         'priority': 50, 'guifg': 'LightSeaGreen',
+    },
+    'NonStandardSelf': {
+         'priority': 50, 'gui': 'bold',
+    },
+    'Pass': {
+         'priority': 50, 'guifg': 'LightGray',
+    },
+    'Self': {
+         'priority': 50, 'gui': 'italic',
+    },
+    'SpecialPunctuation': {
+         'priority': 50, 'guifg': 'LightGray',
+    },
+    'StandardConst': {
+         'priority': 50, 'guifg': 'PowderBlue',
+    },
+
+    # Over-rides of standard groups.
+    'String': {
+         'priority': 50, 'guifg': 'LightSalmon',
+    },
+}
 
 #: This is used to log any unknown Tree-sitter names when first encountered.
 _seen_unkown_names: set[str] = set()
@@ -99,7 +159,7 @@ class InprogressPropsetOperation:
 
     buf: vpe.Buffer
     listener: Listener
-    unset_lines: set[int] = field(default_factory=list)
+    unset_lines: set[int] = field(default_factory=set)
     target_lines: Iterable[int] = field(default_factory=list)
     active: bool = False
     timer: vpe.Timer | None = None
@@ -108,7 +168,7 @@ class InprogressPropsetOperation:
     prop_count: int = 0
 
     def start(self, affected_lines: AffectedLines) -> None:
-        """Start a new properrty setting run.
+        """Start a new property setting run.
 
         Any partial run is abandoned.
         """
@@ -121,16 +181,18 @@ class InprogressPropsetOperation:
         self.listener.syntax_line_spans.debug_reset()
 
         self.active = True
-        if affected_lines:
-            self.unset_lines = set()
-            for a, b in affected_lines:
-                self.unset_lines.update(range(a, b))
-        else:
-            print('Propset start for ALL lines!')
-            self.unset_lines = set(range(len(self.buf)))
+        #- if affected_lines:
+        #-     self.unset_lines = set()
+        #-     for a, b in affected_lines:
+        #-         self.unset_lines.update(range(a, b))
+        #- else:
+        #-     print('Propset start for ALL lines!')
+        #-     self.unset_lines = set(range(len(self.buf)))
+
+        # If the buffer is visible in one or more windows, start with the lines
+        # visible in those windows.
         win_ids = vim.win_findbuf(self.buf.number)
         if win_ids:
-            print(f'Update windows: {list(win_ids)}')
             ranges = []
             for win_id in win_ids:
                 info = vim.getwininfo(win_id)[0]
@@ -140,7 +202,11 @@ class InprogressPropsetOperation:
             self.target_lines = chain(*ranges, range(len(self.buf)))
         else:
             self.target_lines = iter(range(len(self.buf)))
-            print('Start on buffer from the top.')
+
+        kwargs = {'bufnr': self.buf.number, 'id': 10_042, 'all': 1}
+        vim.prop_remove(kwargs)
+
+        self.unset_lines = set(range(len(self.buf)))
         self._try_add_props()
 
     def _try_add_props(self, _timer: vpe.Timer | None = None) -> None:
@@ -152,10 +218,73 @@ class InprogressPropsetOperation:
                 self.timer = None
             tot_time = sum(self.times)
             map_time = self.listener.syntax_line_spans.tot_time
-            print(f'All {self.prop_count} props applied in {tot_time=}'
-                  f' {map_time=}')
+            print(f'All {self.prop_count} props applied in {tot_time=:.4f}'
+                  f' {map_time=:.4f}')
 
     def _do_add_props(self) -> None:
+        """Add properties to a numebr of lines."""
+        debug_line_index = -1
+        def dump_line(index):
+            print(f'HL: {self.buf[index]!r}')
+            for a, b, name in spans[index]:
+                print(f'    {a}--{b} = {name}')
+
+        spans = self.listener.syntax_line_spans
+        unknown_names = set()
+        kwargs = {'bufnr': self.buf.number, 'id': 10_042}
+        start_time = time.time()
+        now = start_time
+
+        max_line_index = len(self.buf) - 1
+        for i in self.target_lines:
+            if i not in self.unset_lines:
+                continue
+            self.unset_lines.discard(i)
+            if i == debug_line_index:
+                dump_line(i)
+
+            line_len = len(self.buf[i])
+            # TODO: I think assert i == sl_idx
+            for sl_idx, sc_idx, el_idx, ec_idx, name in spans[i]:
+                assert sl_idx == i
+                if el_idx > max_line_index:
+                    el_idx = max_line_index + 1
+                    ec_idx = 0
+                else:
+                    ec_idx = min(len(self.buf[el_idx]), ec_idx)
+                self.prop_count += 1
+                if name not in syn_name_to_prop_name:
+                    if name not in _seen_unkown_names:
+                        unknown_names.add(name)
+                        _seen_unkown_names.add(name)
+                    continue
+                prop_name = syn_name_to_prop_name[name]
+                if prop_name is None:
+                    continue
+
+                sc_idx = min(sc_idx, line_len)
+                kwargs['end_lnum'] = el_idx + 1
+                kwargs['end_col'] = ec_idx + 1
+                kwargs['type'] = prop_name
+                vim.prop_add(i + 1, sc_idx + 1, kwargs)
+                if i < 0:
+                    print(
+                        f'Add {i + 1},{sc_idx + 1}, {el_idx + 1},{ec_idx + 1}'
+                        f' - {prop_name}')
+
+            now = time.time()
+            if now - start_time > 0.08:
+                self.times.append(now - start_time)
+                if unknown_names:
+                    print(f'Unhandled tree-sitter names: {unknown_names}')
+                return
+
+        self.active = False
+        self.times.append(now - start_time)
+        if unknown_names:
+            print(f'Unhandled tree-sitter names: {unknown_names}')
+
+    def old_do_add_props(self) -> None:
         """Add properties to a numebr of lines."""
         debug_line_index = 851
         def dump_line(index):
@@ -167,6 +296,7 @@ class InprogressPropsetOperation:
         unknown_names = set()
         kwargs = {'bufnr': self.buf.number}
         start_time = time.time()
+        now = start_time
 
         debug = True
         for i in self.target_lines:
@@ -215,7 +345,7 @@ class InprogressPropsetOperation:
 
 
 class Highlighter:
-    """An object that maintaiuns syntax highlighting for a buffer."""
+    """An object that maintains syntax highlighting for a buffer."""
 
     def __init__(self, buf: vpe.Buffer, listener: Listener):
         self.buf = buf
@@ -231,7 +361,7 @@ class Highlighter:
         """Handle when a window showing this buffer has scrolled or resized."""
         top_index = info['topline'] - 1
         bottom_index = info['botline'] - 1
-        print(f'Win change:  {top_index=} {bottom_index=}')
+        # print(f'Win change:  {top_index=} {bottom_index=}')
 
 
 def create_prop_type(
@@ -264,48 +394,18 @@ def create_prop_type(
 
 def create_std_prop_types():
     """Create property types for the standard group names."""
-    for name in STANDARD_GROUPS:
-        create_prop_type(name, highlight_group_name=name)
+    for name, priority in STANDARD_GROUPS:
+        create_prop_type(name, highlight_group_name=name, priority=priority)
+
+
+def add_or_override_groups():
+    """Create property types for the standard group names."""
+    for name, data in ADDITIONAL_GROUPS.items():
+        data = data.copy()
+        priority = data.pop('priority', 50)
+        vpe.highlight(group=name, **data)
+        create_prop_type(name, highlight_group_name=name, priority=priority)
 
 
 create_std_prop_types()
-
-
-# ----------------------------------------------------------------------------
-# Dead/broken stuff below this point.
-# ----------------------------------------------------------------------------
-
-# TODO: This is non-generic and not being used.
-def create_text_prop_types():
-    """Create all the standard property types required by Python."""
-    create_std_prop_types()
-
-    vpe.highlight(group='FloatNumber', guifg='LightSeaGreen')
-    vpe.highlight(group='DocString', guifg='LightSteelBlue')
-    vpe.highlight(group='ClassName', guifg='ForestGreen')
-    vpe.highlight(group='FunctionName', guifg='PaleGreen')
-    vpe.highlight(group='Class', guifg='DarkGoldenrod')
-    vpe.highlight(group='Pass', guifg='LightGray')
-    vpe.highlight(group='StandardConst', guifg='PowderBlue')
-    vpe.highlight(group='Self', guifg='Wheat3', gui='italic')
-    vpe.highlight(group='NonStandardSelf', guifg='OrangeRed', gui='bold')
-    vpe.highlight(group='StandardDecorator', guifg='PowderBlue', gui='italic')
-
-    create_prop_type('Class', highlight_group_name='Class')
-    create_prop_type('ClassName', highlight_group_name='ClassName')
-    create_prop_type('DocString', highlight_group_name='DocString')
-    create_prop_type('FunctionName', highlight_group_name='FunctionName')
-    create_prop_type('MethodName', highlight_group_name='FunctionName')
-    create_prop_type('Pass', highlight_group_name='Pass')
-    create_prop_type('Self', highlight_group_name='Self')
-    create_prop_type('Cls', highlight_group_name='Self')
-    create_prop_type('NonStandardSelf', highlight_group_name='NonStandardSelf')
-    create_prop_type('NonStandardCls', highlight_group_name='NonStandardSelf')
-    create_prop_type('StandardConst', highlight_group_name='StandardConst')
-    create_prop_type('ClassMethodDecorator', highlight_group_name='StandardDecorator')
-    create_prop_type('StaticMethodDecorator', highlight_group_name='StandardDecorator')
-
-    create_prop_type('FloatNumber', highlight_group_name='Float')
-
-
-# create_text_prop_types()
+add_or_override_groups()
