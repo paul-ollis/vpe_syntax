@@ -7,17 +7,23 @@ has a supported language.
 Dependencies:
     vpe_sitter - attaches and maintains the parse tree for each buffer.
 """
+from __future__ import annotations
+
+from typing import ClassVar
 
 import vpe
-from vpe import vim, EventHandler
+from vpe import EventHandler, vim
 
 import vpe_sitter
 from vpe_sitter.listen import Listener
-from vpe_syntax import core
+from vpe_syntax import core, hl_groups, scheme_tweaker
 
 
 class Plugin(vpe.CommandHandler, EventHandler):
     """The plug-in."""
+
+    initalised: ClassVar[bool] = False
+    highlights: ClassVar[dict[str, hl_groups.Highlight]] = {}
 
     def __init__(self, *args, **kwargs):
         # create_text_prop_types()
@@ -41,6 +47,7 @@ class Plugin(vpe.CommandHandler, EventHandler):
         vim.command('syntax clear')
         if not vim.exists('g:syntax_on'):
             vim.command('syntax enable')
+        self._lazy_init()
 
         # Create a Highlighter connected to the buffer's `Listener` and add to
         # the buffer store.
@@ -48,6 +55,11 @@ class Plugin(vpe.CommandHandler, EventHandler):
         listener: Listener = buf.store('tree-sitter').listener
         store = buf.store('syntax-sitter')
         store.highlighter = core.Highlighter(buf, listener)
+
+    @vpe.CommandHandler.command('Syntweak')
+    def show_scheme(self):
+        """"Show scheme tweaker in a split window."""
+        scheme_tweaker.show()
 
     @EventHandler.handle('WinResized')
     @EventHandler.handle('WinScrolled')
@@ -71,6 +83,17 @@ class Plugin(vpe.CommandHandler, EventHandler):
             if highlighter is not None:
                 highlighter.handle_window_scrolled(vim.getwininfo(win_id)[0])
 
+    @classmethod
+    def _lazy_init(cls) -> None:
+        """Perform lazy initialisation.
+
+        This exists to allow other Vim plugin and initalisation code to run
+        first.
+        """
+        if cls.initalised:
+            return
+        cls.initalised = True
+        cls.highlights = hl_groups.highlights
 
 
 app = Plugin()
