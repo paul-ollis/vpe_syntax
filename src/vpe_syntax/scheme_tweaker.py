@@ -28,6 +28,7 @@ else:
 TWEAKER_GROUPS: dict[str, dict] = {
     'CloseFGColour':      {'priority': 50, 'fg':  'White',},
     'CloseBGColour':      {'priority': 50, 'fg':  'White',},
+    'CloseSPColour':      {'priority': 50, 'fg':  'White',},
     'Hotkey':             {'priority': 50, 'fg':  'SeaGreen',
                                            'gui': 'Bold'},
     'Label':              {'priority': 50, 'fg':  'DarkGoldenrod',},
@@ -167,7 +168,7 @@ class Tweaker(vpe.CommandHandler, KeyHandler):
         self.widgets['sp'] = RgbTweakerWidget(
             parent=self, attr='gui.sp', lidx=lidx + 2,
             highlight=self.highlight, label='sp',
-            closest_highlighter=tweaker_highlights['CloseBGColour']
+            closest_highlighter=tweaker_highlights['CloseSPColour']
         )
         lidx += 4
         self.widgets['menu'] = self._create_menu_widget(lidx)
@@ -265,7 +266,12 @@ class Tweaker(vpe.CommandHandler, KeyHandler):
             ('Tweaker_Hotkey', c, c + 1) for c in (8, 22, 24, 38, 40, 54)]
         props.append(('Tweaker_Label', 4, 6))
         if c_colour is not None:
-            key = 'CloseFGColour' if label == 'fg' else 'CloseBGColour'
+            if label =='fg':
+                key = 'CloseFGColour'
+            elif label =='bg':
+                key = 'CloseBGColour'
+            else:
+                key = 'CloseSPColour'
             hl = tweaker_highlights[key]
             props.append(
                 (f'{hl.name}', offset, offset + len(c_colour.name)))

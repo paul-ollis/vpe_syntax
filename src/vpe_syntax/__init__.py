@@ -5,46 +5,122 @@ This plugin maintains a Tree-sitter parse tree for each buffer that
 has a supported language.
 
 Dependencies:
-    vpe_sitter - attaches and maintains the parse tree for each buffer.
+    vim-vpe    - The Vim Python Extensions.
+    vpe_sitter - Attaches and maintains the parse tree for each buffer.
 """
 from __future__ import annotations
 
+# TODO:
+#   Probably need to do recreate tree after a buffer load (e.g. after external
+#   changes).
+
+from importlib.resources import files
+from importlib.resources.abc import Traversable
+from pathlib import Path
 from typing import ClassVar
 
 import vpe
-from vpe import EventHandler, vim
+from vpe import vim
+from vpe.argparse import CommandBase, SubCommandBase, TopLevelSubCommandHandler
 
 import vpe_sitter
 from vpe_sitter.listen import Listener
 from vpe_syntax import core, hl_groups, scheme_tweaker
+from vpe_syntax.core import EmbeddedHighlighter, NestedCodeBlockSpec
 
 
-class Plugin(vpe.CommandHandler, EventHandler):
+def register_embedded_language(
+        filetype: str,
+        embedded_type: str,
+        highlighter: EmbeddedHighlighter,
+    ) -> None:
+    """Register an `EmbeddedHighlighter` object.
+
+    :filetype:
+        The language name of the parent file.
+    :embedded_type:
+        The language name of embdedded code.
+    :highlighter:
+        A `EmbeddedHighlighter` that finds embedded code.
+    """
+    core.embedded_syntax_handlers[(filetype, embedded_type)] = highlighter
+
+
+def find_language_syntax_files(filetype: str) -> list[Traversable]:
+    """Find built-in and user defined syntax files for a given filetype.
+
+    :return:
+        A list of `Traversable` objects for the given language in priority
+        order, lowest to highest. An empty list indicates that the langhuag is
+        not supported.
+    """
+
+    traversables = []
+    syn_trav: Traversable = files(
+        'vpe_syntax.resources').joinpath(f'{filetype}.syn')
+    if syn_trav.is_file():
+        traversables.append(syn_trav)
+
+    syn_path = Path.home() / f'.vim/plugin/vpe_syntax/{filetype}.syn'
+    if syn_path.is_file():
+        traversables.append(syn_path)
+
+    return traversables
+
+
+class Plugin(TopLevelSubCommandHandler):
     """The plug-in."""
 
     initalised: ClassVar[bool] = False
     highlights: ClassVar[dict[str, hl_groups.Highlight]] = {}
+    sub_commands = {
+        'on': (
+            ':simple', 'Turn on syntax highlighting for the current buffer.'),
+        'tweak': (
+            ':simple', 'Open highlight tweaker.'),
+        'rebuild': (
+            ':simple', 'Rebuild syntax tables and highlighing.'),
+    }
 
     def __init__(self, *args, **kwargs):
         # create_text_prop_types()
         super().__init__(*args, **kwargs)
         self.highlighters: dict[int, core.Highlighter] = {}
-        self.auto_define_commands()
-        self.auto_define_event_handlers('VPE_SyntaxEventGroup')
 
-    @vpe.CommandHandler.command('Syntaxsit')
-    def run(self):
-        """Execute the Syntaxsit command.
+    def handle_on(self) -> None:
+        """Execute the 'Synsit on' command.
 
         Starts running Tree-sitter syntax highlighting on the current buffer.
         """
-        if not vpe_sitter.treesit_current_buffer():
-            print('Tree-sitter base syntax highlighting is not possible.')
+        if msg := vpe_sitter.treesit_current_buffer():
+            vpe.error_msg(msg)
             return
 
+        # Check that the current buffer is using a supported language.
+        buf = vim.current.buffer
+        filetype = buf.options.filetype
+        traversables: list[Traversable] = find_language_syntax_files(filetype)
+        if not traversables:
+            vpe.error_msg(
+                f'Tree-sitter syntax not defined for {filetype}.')
+            return
+
+        # pylint: disable=import-outside-toplevel
+        from vpe_syntax.language_nesting import MyEmbeddedHighlighter
+        # TODO:
+        #   This needs to be performed in a lazy manner, under a user's
+        #   control (e.g. in .vim/after/ftplugin/<lang>.vim).
+        register_embedded_language(
+            'python', 'python', MyEmbeddedHighlighter('python'))
+
+        # Build the supporting tables.
+        core.build_tables(filetype, traversables)
+
         # Make sure that syntax highlighting is activated, but clear any syntax
-        # for the current buffer.
+        # for the current buffer. Then add a 'dummy' Spell cluster so that Vim
+        # will do limited spell checking.
         vim.command('syntax clear')
+        vim.command('syntax cluster Spell contains=NothingToSeeHere')
         if not vim.exists('g:syntax_on'):
             vim.command('syntax enable')
         self._lazy_init()
@@ -56,39 +132,31 @@ class Plugin(vpe.CommandHandler, EventHandler):
         store = buf.store('syntax-sitter')
         store.highlighter = core.Highlighter(buf, listener)
 
-    @vpe.CommandHandler.command('Syntweak')
-    def show_scheme(self):
-        """"Show scheme tweaker in a split window."""
+    def handle_tweak(self):
+        """Execute the 'Synsit tweak' command.
+
+        Show scheme tweaker in a split window."""
         scheme_tweaker.show()
 
-    @EventHandler.handle('WinResized')
-    @EventHandler.handle('WinScrolled')
-    def handle_window_change(self, *args, **kwargs) -> None:
-        """Take action when some windows have scrolled or resized."""
-        event = vim.vvars.event
-        win_id: str
-        for win_id in event:
-            if win_id == 'all':
-                continue
-            window = vpe.Window.win_id_to_window(win_id)
-            if window is None:
-                continue
-            buffer = window.buffer
-            if buffer.name.startswith('/[['):
-                continue
+    def handle_rebuild(self):
+        """Execute the 'Synsit rebuild' command."""
+        buf = vim.current.buffer
+        store = buf.retrieve_store('syntax-sitter')
+        if store is None:
+            vpe.error_msg(
+                'Current buffer is not using vpe_syntax highlighting.')
+            return
 
-            # print(f'WinScrolled: {buffer.name}')
-            store = buffer.store('syntax-sitter')
-            highlighter = getattr(store, 'highlighter', None)
-            if highlighter is not None:
-                highlighter.handle_window_scrolled(vim.getwininfo(win_id)[0])
+        # Rebuild the highlighting tables.
+        filetype = buf.options.filetype
+        traversables: list[Traversable] = find_language_syntax_files(filetype)
+        core.build_tables(filetype, traversables, rebuild=True)
 
     @classmethod
     def _lazy_init(cls) -> None:
         """Perform lazy initialisation.
 
-        This exists to allow other Vim plugin and initalisation code to run
-        first.
+        This exists to allow other Vim/plugin initalisation code to run first.
         """
         if cls.initalised:
             return
@@ -96,4 +164,4 @@ class Plugin(vpe.CommandHandler, EventHandler):
         cls.highlights = hl_groups.highlights
 
 
-app = Plugin()
+app = Plugin('Synsit')

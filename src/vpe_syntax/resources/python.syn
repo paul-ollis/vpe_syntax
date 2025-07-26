@@ -1,0 +1,114 @@
+# Tree structure                   Property name
+and                                Keyword
+as                                 Keyword
+assert                             Keyword
+async                              Keyword
+await                              Keyword
+break                              Keyword
+class                              Keyword
+comment                            Comment
+continue                           Keyword
+decorator                          Decorator
+def                                Keyword
+del                                Keyword
+elif                               Keyword
+else                               Keyword
+ERROR                              SyntaxError
+except                             Keyword
+false                              Boolean
+finally                            Keyword
+float                              Float
+for                                Keyword
+from                               Keyword
+global                             Keyword
+identifier                         Identifier
+if                                 Keyword
+import                             Keyword
+in                                 Keyword
+integer                            Number
+interpolation                      Interpolation
+is                                 Keyword
+lambda                             Keyword
+None                               Keyword
+none                               None
+nonlocal                           Keyword
+not                                Keyword
+operator                           Operator
+operators                          Operator
+or                                 Keyword
+pass                               Keyword
+raise                              Keyword
+return                             Return
+string                             String
+true                               Boolean
+try                                Keyword
+while                              Keyword
+with                               Keyword
+
+yield
+    yield                          Keyword
+
+module
+    expression_statement
+        string                     DocString
+
+class_definition
+    class                          Class
+    name:identifier                ClassName
+    block
+        expression_statement
+            string                 DocString
+        function_definition
+            def                    Method
+        function_definition
+            identifier             MethodName
+
+
+import_statement
+    import                         Import
+    dotted_name                    ImportedName
+
+import_from_statement
+    import                         Import
+    from                           Import
+    dotted_name                    ImportedName
+    aliased_import
+        as                         Import
+        dotted_name                ImportedName
+        identifier                 ImportedAliasedName
+
+function_definition
+    block
+        expression_statement
+            string                 DocString
+    def                            Function
+    name:identifier                FunctionName
+    parameters
+        identifier                 Parameter
+        default_parameter
+            identifier             Parameter
+        typed_parameter
+            identifier             Parameter
+        typed_default_parameter
+            identifier             Parameter
+
+call
+    identifier                     CalledFunction
+    function:attribute
+        attribute:identifier       CalledMethod
+
+attribute
+    attribute:identifier           Attribute
+
+argument_list
+    identifier                     Argument
+
+type_parameter
+    [                              TypeBracket
+    ]                              TypeBracket
+
+type
+    identifier                     Type
+
+generic_type
+    identifier                     GenericType

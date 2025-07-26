@@ -1,0 +1,35 @@
+# Tree structure                   Property name
+
+#define                            Define
+#endif                             PreCondit
+#ifdef                             PreCondit
+#ifndef                            PreCondit
+#if                                PreCondit
+#include                           Include
+#include                           Include
+
+break                              Keyword
+char_literal                       Character
+comment                            Comment
+const                              Keyword
+do                                 Keyword
+else                               Keyword
+escape_sequence                    SpecialChar
+false                              Constant
+if                                 Keyword
+name:identifier                    Identifier
+NULL                               Constant
+path:system_lib_string             String
+return                             Statement
+type:primitive_type                Type
+type:type_identifier               Type
+sizeof                             Operator
+string_literal                     String
+true                               Constant
+number_literal                     Number
+while                              Keyword
+
+declarator:function_declarator
+    declarator:identifier          FunctionName
+value:call_expression
+    function:identifier            CalledFunction

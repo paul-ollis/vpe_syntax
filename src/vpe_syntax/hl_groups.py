@@ -16,6 +16,19 @@ from vpe import vim
 #: These groups are created as a result of 'syntax on' being executed. They are
 #: the recommended generic group names that are applicable for a range of
 #: programming languages.
+#:
+#: Each has a priority value, which is used by Vim to handle overlapping
+#: propeties. The property with the highest priority is used to colour the
+#: text. In order to handle syntax items that nest within other syntax items
+#: and also embedded syntax, a priorty scheme is required. The current scheme
+#: is, roughly:
+#:
+#: - The default priorty for a group is 50 and values in the range 1 to 99 are
+#:   allowed. This should be enought to handle normal syntax item nesting.
+#: - For each group, additional property types are created to handle embedded
+#:   syntax. These have multiple of 100 added to their priority values. For
+#:   example, the "Comment" group gives rise to property types "Comment" and
+#:   "Comment1", with priority values of 50 and 150.
 STANDARD_GROUPS = (
     # The groupings match those in Vim's help. The first entry in a group is
     # the 'preferred' group and the others considered 'sub-groups'. This set of
@@ -77,38 +90,40 @@ STANDARD_GROUPS = (
 #: syntactic and semantic content from code. Hence this set of extended
 #: 'standard' groups.
 #:
-#: Each is linked, by default, to one of the 'standard' groups or `None` as a
-#: starting point. The intention is that user's or colour schemes may over-ride
-#: these group definitions as required.
+#: In this table, each is group, by default, to one of the 'standard' groups or
+#: `None` as a starting point. The intention is that users or colour schemes
+#: may over-ride these group definitions as required.
 EXT_STANDARD_GROUPS: list[tuple[str, str | None]] = [
-    ('Argument',            'Identifier',  50),
-    ('Attribute',           'Identifier',  50),
-    ('CalledFunction',      'Identifier',  50),
-    ('CalledMethod',        'Identifier',  50),
-    ('Class',               'Keyword',     50),
-    ('ClassName',           'Identifier',  50),
-    ('Constructor',         'Normal',      60),
-    ('DefinitionStarter',   'Identifier',  50),
-    ('Decorator',           'Identifier',  50),
-    ('DocString',           'Comment',     50),
+    ('Argument',            'Identifier',  55),
+    ('Attribute',           'Identifier',  55),
+    ('CalledFunction',      'Identifier',  55),
+    ('CalledMethod',        'Identifier',  58),
+    ('Class',               'Keyword',     55),
+    ('ClassName',           'Identifier',  55),
+    ('Constructor',         'Normal',      65),
+    ('DefinitionStarter',   'Identifier',  55),
+    ('Decorator',           'Identifier',  55),
+    ('DocString',           'Comment',     55),
     ('FormatIdentifier',    'Normal',      45),
     ('FormatSpecifier',     'Normal',      40),
-    ('Function',            'Keyword',     50),
-    ('FunctionName',        'Identifier',  50),
-    ('ImportedAliasedName', 'Normal',      50),
-    ('ImportedName',        'Normal',      50),
-    ('Import',              'Import',      50),
-    ('Interpolation',       'Comment',     40),
-    ('MethodCall',          'Normal',      50),
-    ('Method',              'Keyword',     50),
-    ('MethodName',          'Identifier',  50),
-    ('None',                'Special',     50),
-    ('NonStandardSelf',     'Normal',      50),
-    ('Parameter',           'Normal',      50),
-    ('Return',              'Keyword',     50),
-    ('Self',                'Normal',      50),
-    ('SpecialPunctuation',  'Normal',      50),
-    ('StandardConst',       'Identifier',  50),
+    ('Function',            'Keyword',     55),
+    ('FunctionName',        'Identifier',  55),
+    ('GenericType',         'Type',        55),
+    ('ImportedAliasedName', 'Normal',      55),
+    ('ImportedName',        'Normal',      55),
+    ('Import',              'Import',      55),
+    ('Interpolation',       'String',      40),
+    ('MethodCall',          'Normal',      55),
+    ('Method',              'Keyword',     55),
+    ('MethodName',          'Identifier',  55),
+    ('None',                'Special',     55),
+    ('NonStandardSelf',     'Normal',      55),
+    ('Parameter',           'Normal',      55),
+    ('Return',              'Keyword',     55),
+    ('Self',                'Normal',      55),
+    ('SpecialPunctuation',  'Normal',      55),
+    ('StandardConst',       'Identifier',  55),
+    ('SyntaxError',         'WarningMsg',  10),
     ('TypeBracket',         'Normal',      60),
 ]
 
@@ -584,18 +599,24 @@ class Highlight:
         else:
             vpe.highlight(group=self.name, link=self.link, dump=dump)
 
-    def create_property(self, priority: int = 50):
+    def create_property(self, priority: int = 50, level: int = 0):
         """Create a property (type) named after this highlight group."""
+        priority = priority + 100 * level
         kw = {
             'priority': priority,
-            'combine': False,       # Over-ride noral syntax highlighting.
-            'start_incl': False,    # Do not extend for inserts at the start.
-            'end_incl': False,      # Do not extend for inserts at the end.
+            'combine': True,        # Combine with normal syntax highlighting.
+            'start_incl': True,     # Do extend for inserts at the start.
+            'end_incl': True,       # Do extend for inserts at the end.
             'highlight': self.name,
         }
-        known_prop_info = vim.prop_type_get(self.name)
+        if self.name == 'DocString':
+            kw['spell'] = True
+        else:
+            kw['spell'] = False
+        name = self.name if level == 0 else f'{self.name}{level}'
+        known_prop_info = vim.prop_type_get(name)
         if not known_prop_info:
-            vim.prop_type_add(self.name, kw)
+            vim.prop_type_add(name, kw)
 
     def get_colour(self, attr: str) -> Colour:
         """Get a colour for a given attribute name."""
@@ -630,6 +651,7 @@ def create_std_group_highlights() -> dict[str, Highlight]:
         group = Highlight.from_name(name)
         table[name] = group
         group.create_property(priority)
+        group.create_property(priority, level=1)
     return table
 
 
@@ -652,6 +674,7 @@ def create_ext_std_group_highlights() -> dict[str, Highlight]:
         table[name] = group
         group.apply()
         group.create_property(priority=priority)
+        group.create_property(priority=priority, level=1)
     return table
 
 
