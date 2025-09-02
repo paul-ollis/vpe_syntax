@@ -154,7 +154,7 @@ def build_tables(
             _update_part_of_table(
                 tree, '.'.join(cname_list), property_name, embedded_syntax)
 
-    dump_match_tree(filetype)
+    #-dump_match_tree(filetype)
 
 
 def dump_match_tree(filetype: str):
@@ -450,7 +450,11 @@ class InprogressPropsetOperation:
                 start_node_lidx = ts_node.start_point.row
                 end_node_lidx = ts_node.end_point.row + 1
                 n_lines = end_node_lidx - start_node_lidx
-                if n_lines < 100 and not cursor.cleared:
+
+                # If this node covers a small enough range of lines or has no
+                # child nodes, then clear any existing properties.
+                no_children = ts_node.child_count == 0
+                if (n_lines < 100  or no_children) and not cursor.cleared:
                     vim.prop_remove(
                         kwargs, start_node_lidx + 1,
                         min(end_node_lidx, len(self.buf)))
@@ -632,11 +636,13 @@ class SynCursor:
         """The current Tree-sitter node."""
         return self.cursor.node
 
+    # TODO: Rename to make it clear this is about properties.
     @property
     def cleared(self) -> Node:
-        """True if the current, and child, nodes have unset properties."""
+        """True if the current and child nodes have unset properties."""
         return self.cleared_stack[-1]
 
+    # TODO: Rename to make it clear this is about properties.
     def set_cleared(self) -> None:
         """Mark this position as a cleared (no properties) node."""
         self.cleared_stack[-1] = True

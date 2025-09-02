@@ -59,7 +59,7 @@ class_definition
         expression_statement
             string                 DocString
         function_definition
-            def                    Method
+            def                    MethodDef
         function_definition
             identifier             MethodName
 
@@ -81,7 +81,7 @@ function_definition
     block
         expression_statement
             string                 DocString
-    def                            Function
+    def                            FunctionDef
     name:identifier                FunctionName
     parameters
         identifier                 Parameter

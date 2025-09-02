@@ -21,7 +21,7 @@ from typing import ClassVar
 
 import vpe
 from vpe import vim
-from vpe.argparse import CommandBase, SubCommandBase, TopLevelSubCommandHandler
+from vpe.user_commands import Namespace, TopLevelSubcommandHandler
 
 import vpe_sitter
 from vpe_sitter.listen import Listener
@@ -68,12 +68,12 @@ def find_language_syntax_files(filetype: str) -> list[Traversable]:
     return traversables
 
 
-class Plugin(TopLevelSubCommandHandler):
+class Plugin(TopLevelSubcommandHandler):
     """The plug-in."""
 
     initalised: ClassVar[bool] = False
     highlights: ClassVar[dict[str, hl_groups.Highlight]] = {}
-    sub_commands = {
+    subcommands = {
         'on': (
             ':simple', 'Turn on syntax highlighting for the current buffer.'),
         'tweak': (
@@ -87,17 +87,22 @@ class Plugin(TopLevelSubCommandHandler):
         super().__init__(*args, **kwargs)
         self.highlighters: dict[int, core.Highlighter] = {}
 
-    def handle_on(self) -> None:
+    def handle_on(self, _args: Namespace) -> None:
         """Execute the 'Synsit on' command.
 
         Starts running Tree-sitter syntax highlighting on the current buffer.
         """
+        buf = vim.current.buffer
+        store = buf.retrieve_store('syntax-sitter')
+        if store is not None:
+            # Syntax highlighting is already active.
+            return
+
         if msg := vpe_sitter.treesit_current_buffer():
             vpe.error_msg(msg)
             return
 
         # Check that the current buffer is using a supported language.
-        buf = vim.current.buffer
         filetype = buf.options.filetype
         traversables: list[Traversable] = find_language_syntax_files(filetype)
         if not traversables:
@@ -106,12 +111,12 @@ class Plugin(TopLevelSubCommandHandler):
             return
 
         # pylint: disable=import-outside-toplevel
-        from vpe_syntax.language_nesting import MyEmbeddedHighlighter
+        # from vpe_syntax.language_nesting import MyEmbeddedHighlighter
         # TODO:
         #   This needs to be performed in a lazy manner, under a user's
         #   control (e.g. in .vim/after/ftplugin/<lang>.vim).
-        register_embedded_language(
-            'python', 'python', MyEmbeddedHighlighter('python'))
+        #register_embedded_language(
+        #    'python', 'python', MyEmbeddedHighlighter('python'))
 
         # Build the supporting tables.
         core.build_tables(filetype, traversables)
@@ -132,13 +137,13 @@ class Plugin(TopLevelSubCommandHandler):
         store = buf.store('syntax-sitter')
         store.highlighter = core.Highlighter(buf, listener)
 
-    def handle_tweak(self):
+    def handle_tweak(self, _args: Namespace):
         """Execute the 'Synsit tweak' command.
 
         Show scheme tweaker in a split window."""
         scheme_tweaker.show()
 
-    def handle_rebuild(self):
+    def handle_rebuild(self, _args: Namespace):
         """Execute the 'Synsit rebuild' command."""
         buf = vim.current.buffer
         store = buf.retrieve_store('syntax-sitter')
@@ -165,3 +170,21 @@ class Plugin(TopLevelSubCommandHandler):
 
 
 app = Plugin('Synsit')
+
+_CUR_PROP = """
+def! Vpe_syntax_cursor_prop(): string
+    var props = prop_list(line('.'))
+    var col = col('.')
+    var found = []
+    for prop in props
+        var pcol = prop['col']
+        var plen = prop['length']
+        if pcol <= col && (pcol + plen) > col
+            call add(found, get(prop, 'type', '-'))
+        endif
+    endfor
+    return string(found)
+enddef
+"""
+
+vim.command(_CUR_PROP)

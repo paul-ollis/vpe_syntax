@@ -31,8 +31,8 @@ from vpe import vim
 #:   "Comment1", with priority values of 50 and 150.
 STANDARD_GROUPS = (
     # The groupings match those in Vim's help. The first entry in a group is
-    # the 'preferred' group and the others considered 'sub-groups'. This set of
-    # names and the groupings thereof are somewhat C-centric.
+    # the 'preferred' group and the others are considered 'sub-groups'. This
+    # set of names and the groupings thereof are somewhat C-centric.
     ('Comment', 50),
 
     ('Constant', 50),
@@ -90,10 +90,10 @@ STANDARD_GROUPS = (
 #: syntactic and semantic content from code. Hence this set of extended
 #: 'standard' groups.
 #:
-#: In this table, each is group, by default, to one of the 'standard' groups or
+#: In this table, each is group is linked to one of the 'standard' groups or
 #: `None` as a starting point. The intention is that users or colour schemes
 #: may over-ride these group definitions as required.
-EXT_STANDARD_GROUPS: list[tuple[str, str | None]] = [
+EXT_STANDARD_GROUPS: list[tuple[str, str | None, int]] = [
     ('Argument',            'Identifier',  55),
     ('Attribute',           'Identifier',  55),
     ('CalledFunction',      'Identifier',  55),
@@ -106,7 +106,7 @@ EXT_STANDARD_GROUPS: list[tuple[str, str | None]] = [
     ('DocString',           'Comment',     55),
     ('FormatIdentifier',    'Normal',      45),
     ('FormatSpecifier',     'Normal',      40),
-    ('Function',            'Keyword',     55),
+    ('FunctionDef',         'Keyword',     55),
     ('FunctionName',        'Identifier',  55),
     ('GenericType',         'Type',        55),
     ('ImportedAliasedName', 'Normal',      55),
@@ -114,7 +114,7 @@ EXT_STANDARD_GROUPS: list[tuple[str, str | None]] = [
     ('Import',              'Import',      55),
     ('Interpolation',       'String',      40),
     ('MethodCall',          'Normal',      55),
-    ('Method',              'Keyword',     55),
+    ('MethodDef',           'Keyword',     55),
     ('MethodName',          'Identifier',  55),
     ('None',                'Special',     55),
     ('NonStandardSelf',     'Normal',      55),

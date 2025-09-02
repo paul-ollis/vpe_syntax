@@ -18,11 +18,15 @@ classifiers = [
     "Topic :: Education",
 ]
 dependencies = [
-    'vpe_sitter',
+    # 'vpe_sitter',
 ]
 
 [tool.setuptools.package-data]
-resources = []
+'vpe_syntax' = ['py.typed']
+'vpe_syntax.resources' = [
+    'c.syn',
+    'python.syn',
+]
 
 [project.scripts]
 
