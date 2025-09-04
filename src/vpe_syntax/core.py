@@ -12,6 +12,7 @@ from tree_sitter import Node, Point, Tree, TreeCursor
 
 import vpe
 from vpe import vim
+from vpe.core import log
 
 from vpe_sitter import parsers
 from vpe_sitter.listen import (
@@ -163,10 +164,10 @@ def dump_match_tree(filetype: str):
         nonlocal pad
 
         if id(node) in seen:
-            print(f'{pad}{name=} ...')
+            log(f'{pad}{name=} ...')
             return
         else:
-            print(f'{pad}{name=} {node.prop_name=} {node.embedded_syntax}')
+            log(f'{pad}{name=} {node.prop_name=} {node.embedded_syntax}')
         seen.add(id(node))
         pad += '    '
         for xname, xnode in node.choices.items():
@@ -391,7 +392,7 @@ class InprogressPropsetOperation:
                 time_str = f'{elapsed=:.4f}s, {used=:.4f}s'
                 time_str += f' continuations={len(self.apply_time.partials)}'
                 data = self.prop_data
-                print(
+                log(
                     f'All {data.prop_count} props applied in {time_str}'
                     f' {data.prop_set_count} prop_add_list calls made,'
                 )
@@ -597,7 +598,7 @@ class InprogressPropsetOperation:
             code_lines = [line[block.indent:] for line in code_lines]
             code_bytes = '\n'.join(code_lines).encode('utf-8')
             tree = em_highlighter.parser.parse(code_bytes, encoding='utf-8')
-            print(f'Parsed to tree {tree.root_node}')
+            log(f'Parsed to tree {tree.root_node}')
             cursor = SynCursor(tree)
             self._do_add_props(
                 cursor, affected_lines=None, prop_adjuster=prop_adjuster)

@@ -72,7 +72,6 @@ class ColourPopup(vpe.Popup):
 
         lidx = mouse_info['line'] - 1
         colour_name = self.buffer[lidx].split()[0]
-        print("POPUP", mouse_info['line'], repr(colour_name))
 
         self.hide()
         self.parent.complete_handle_choose_colour(colour_name)
@@ -400,7 +399,6 @@ class Tweaker(vpe.CommandHandler, KeyHandler):
     @nmapped(keyseq=('tb', 'tc', 'ti', 'to', 'tr', 'ts', 'tu'))
     def handle_command_sequence(self, info:vpe.MappingInfo) -> None:
         """Handle one of the command sequence mappings."""
-        print("CMD", info.keys)
         cmd = info.keys
         if cmd in ('tb', 'tc', 'ti', 'to', 'tr', 'ts', 'tu'):
             flag = command_to_highlight_flag[cmd]
@@ -432,7 +430,6 @@ class Tweaker(vpe.CommandHandler, KeyHandler):
                 return
 
         if widget.is_selectable:
-            print(">>>", name, widget.is_selectable)
             self.cursor = name
             self.draw_widgets()
 
