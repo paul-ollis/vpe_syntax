@@ -10,7 +10,7 @@
 Welcome to the Tree-sitter support for Vim.
 
 :status:
-    This is version 0.1.0
+    This is version 0.1.1
 
     This is alpha software, but I use it all the time and it has been behaving
     reliably for me (but see the issues and limitations listed below).
@@ -19,11 +19,17 @@ Welcome to the Tree-sitter support for Vim.
     easily be made to work with Neovim and, in any case, Neovim already has
     quite mature `support for Tree-sitter`_.
 
-    Currently the only supported languages are Python an C. It should be not
+    Currently the only supported languages are Python and C. It should be not
     difficult to add many of the languages that are available on PyPi. They
     typically have names like tree=sitter-bash, tree-sitter-pascal, *etc*. In
-    the next release, I plan to provide documentation that will include how to
-    add support for other languages.
+    the next point release (0.2), I plan to provide documentation that will
+    include how to add support for other languages.
+
+
+News
+====
+
+Version 0.1.1 enables support for Windows.
 
 
 Requirements
@@ -74,11 +80,11 @@ There are some notable issues.
 Installation
 ============
 
-Install Vpe_Syntax
-------------------
+I have only used this on Linux and Windows.
 
-I have only used this on Linux (Windows testing hopefully coming soon) so this
-is all Linux specific.
+
+Linux
+~~~~~
 
 As advised for `VPE`_, it is recommended that you use a virtual environment,
 hosted within your Vim configuration tree. You may find it useful to read
@@ -104,6 +110,23 @@ assumes that your Vim configuration directory is $HOME/.vim.
         python -m pip install vpe_syntax
 
 3.  If you did not already have `VPE`_ installed then you will need to perform
+    additional one-off installation of support Vim plugin code. Follow the
+    `VPE first installations`_, steps 2 to 4.
+
+
+Windows
+~~~~~~~
+
+A user install is recommended.
+
+1.  Install using the command.
+
+    .. code-block:: bash
+
+        # Install VPE.
+        python -m pip install --user vpe_syntax
+
+2.  If you did not already have `VPE`_ installed then you will need to perform
     additional one-off installation of support Vim plugin code. Follow the
     `VPE first installations`_, steps 2 to 4.
 

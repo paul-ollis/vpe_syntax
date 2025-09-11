@@ -1,6 +1,6 @@
 [project]
 name = "vpe-syntax"
-version = "0.1.0"
+version = "0.1.1"
 authors = [
   { name="Paul Ollis", email="paul@cleversheep.org" },
 ]
@@ -18,7 +18,7 @@ classifiers = [
     "Topic :: Education",
 ]
 dependencies = [
-    'vpe-sitter',
+    'vpe-sitter>=0.1.1',
 ]
 
 [tool.setuptools.package-data]
