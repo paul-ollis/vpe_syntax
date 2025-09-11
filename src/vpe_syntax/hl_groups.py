@@ -648,6 +648,11 @@ def create_std_group_highlights() -> dict[str, Highlight]:
     """Create a `Highlight` instances for each standard highlight group."""
     table = {}
     for name, priority in STANDARD_GROUPS:
+        if vim.hlID(name) == 0:
+            # Just because the Vim help says it is a standard group doe not
+            # mean it actually exists.
+            continue
+
         group = Highlight.from_name(name)
         table[name] = group
         group.create_property(priority)
@@ -662,7 +667,11 @@ def create_ext_std_group_highlights() -> dict[str, Highlight]:
         hid = vim.hlID(name)
         if hid == 0:
             # Group is not defined so add it.
-            group = Highlight(name, link=link)
+            if vim.hlID(link) == 0:
+                # In case the linked to default does not exists.
+                group = Highlight(name, link='Normal')
+            else:
+                group = Highlight(name, link=link)
         else:
             # Group is defined so use defined settings.
             attr_dict = dict(vim.hlget(name)[0])
