@@ -10,7 +10,7 @@
 Welcome to the Tree-sitter support for Vim.
 
 :status:
-    This is version 0.1.1
+    This is version 0.2.0
 
     This is alpha software, but I use it all the time and it has been behaving
     reliably for me (but see the issues and limitations listed below).
@@ -21,7 +21,7 @@ Welcome to the Tree-sitter support for Vim.
 
     Currently the only supported languages are Python and C. It should be not
     difficult to add many of the languages that are available on PyPi. They
-    typically have names like tree=sitter-bash, tree-sitter-pascal, *etc*. In
+    typically have names like tree-sitter-bash, tree-sitter-pascal, *etc*. In
     the next point release (0.2), I plan to provide documentation that will
     include how to add support for other languages.
 

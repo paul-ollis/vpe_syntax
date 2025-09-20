@@ -20,8 +20,11 @@ from vpe_sitter.listen import (
 
 SENTINEL = object()
 
-#: Qualfied Tree-sitter type name - field_name, type_name.
+#: Qualified Tree-sitter type name - field_name, type_name.
 QualTreeNodeName: TypeAlias = tuple[str | None, str]
+
+#: A key used to select on choice from a `MatchNode`.
+ChoiceKey: TypeAlias = str | tuple[str, str]
 
 #: Canonical Tree-sitter node name.
 #:
@@ -35,7 +38,7 @@ APPLY_PROPS_TIMEOUT = 0.05
 #: operation.
 RESUME_DELAY = 1
 
-#: Tree structures used to test a Tree-sitter node for a highligh match.
+#: Tree structures used to test a Tree-sitter node for a highlight match.
 #:
 #: Each tree is composed of `MatchNode` instances, including the root.
 match_trees: dict[str, MatchNode] = {}
@@ -87,7 +90,7 @@ class MatchNode:
         The embedded parser for this node.
     """
     prop_name: str = ''
-    choices: dict[str, MatchNode] = field(default_factory=dict)
+    choices: dict[ChoiceKey, MatchNode] = field(default_factory=dict)
     embedded_syntax: str = ''
 
 
@@ -104,18 +107,20 @@ def _update_part_of_table(
         else:
             repeat = False
 
+        key: ChoiceKey = ident
         if ':' in ident:
-            ident = tuple(ident.split(':'))
-        if ident not in node.choices:
-            node.choices[ident] = MatchNode()
-        node = node.choices[ident]
+            a, b = ident.split(':', 1)
+            key = a, b
+        if key not in node.choices:
+            node.choices[key] = MatchNode()
+        node = node.choices[key]
         if i == last_index:
             node.prop_name = property_name
             node.embedded_syntax = embedded_syntax
 
         if repeat:
             # Note:This makes a the match tree recursive.
-            node.choices[ident] = node
+            node.choices[key] = node
 
 
 def build_tables(
@@ -155,13 +160,12 @@ def build_tables(
             _update_part_of_table(
                 tree, '.'.join(cname_list), property_name, embedded_syntax)
 
-    #-dump_match_tree(filetype)
+    # dump_match_tree(filetype)
 
 
 def dump_match_tree(filetype: str):
     """Dump a match tree - for debugging."""
-    def do_dump(node, name):
-        nonlocal pad
+    def do_dump(node, name, pad):
 
         if id(node) in seen:
             log(f'{pad}{name=} ...')
@@ -169,14 +173,12 @@ def dump_match_tree(filetype: str):
         else:
             log(f'{pad}{name=} {node.prop_name=} {node.embedded_syntax}')
         seen.add(id(node))
-        pad += '    '
         for xname, xnode in node.choices.items():
-            do_dump(xnode, xname)
-        pad = pad[-4:]
+            do_dump(xnode, xname, pad + '    ')
 
     seen = set()
     pad = ''
-    do_dump(match_trees[filetype], '')
+    do_dump(match_trees[filetype], '', '')
 
 
 @dataclass
@@ -508,7 +510,7 @@ class InprogressPropsetOperation:
         self._flush_props()
         return True
 
-    # This is just to time time to walk the tree: sqlite3 = 0.89s.
+    # This is just to time walking the tree: sqlite3 = 0.89s.
     def _xdo_add_props(
             self, cursor: SynCursor,
             _affected_lines: list[range] | None,
