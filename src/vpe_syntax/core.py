@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import time
+from abc import abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from importlib.resources.abc import Traversable
 from typing import NamedTuple, TypeAlias
 
-from tree_sitter import Node, Point, Tree, TreeCursor
+from tree_sitter import Node, Parser, Point, Tree, TreeCursor
 
 import vpe
 from vpe import vim
@@ -60,7 +61,7 @@ TextRangeAdjuster: TypeAlias = Callable[
 
 
 class State(Enum):
-    """The states for the `InprogressPropsetOperation`."""
+    """The states for the `InProgressPropsetOperation`."""
 
     INCOMPLETE = 1
     COMPLETE = 2
@@ -135,7 +136,7 @@ def build_tables(
             yield from traversable.read_text(encoding='utf-8').splitlines()
 
     tree = match_trees[filetype] = MatchNode()
-    cname_list = []
+    cname_list: list[str] = []
     for raw_line in all_lines():
         line = raw_line.rstrip()
         if line.startswith('# ') or not line.strip():
@@ -166,7 +167,6 @@ def build_tables(
 def dump_match_tree(filetype: str):
     """Dump a match tree - for debugging."""
     def do_dump(node, name, pad):
-
         if id(node) in seen:
             log(f'{pad}{name=} ...')
             return
@@ -176,8 +176,7 @@ def dump_match_tree(filetype: str):
         for xname, xnode in node.choices.items():
             do_dump(xnode, xname, pad + '    ')
 
-    seen = set()
-    pad = ''
+    seen: set[int] = set()
     do_dump(match_trees[filetype], '', '')
 
 
@@ -188,7 +187,7 @@ class PropertyData:
     prop_count: int = 0      # TODO: Unclear name.
     prop_set_count: int = 0  # TODO: Unclear name.
     props_per_set: int = 10000
-    props_to_add: dict[str, list[list[int, int, int, int]]] = field(
+    props_to_add: dict[str, list[list[int]]] = field(
         default_factory=dict)
     props_pending_count: int = 0
     continuation_count: int = 0
@@ -253,7 +252,7 @@ class SpellBlocks:
 
 
 @dataclass
-class InprogressPropsetOperation:
+class InProgressPropsetOperation:
     """Manager of an in-progress syntax property setting operation.
 
     This applies syntax highlighting from a Tree-sitter parse tree as a pseudo-
@@ -284,7 +283,7 @@ class InprogressPropsetOperation:
     listener: Listener
     state: State = State.INCOMPLETE
     timer: vpe.Timer | None = None
-    cursor: TreeCursor | None = None
+    cursor: SynCursor | None = None
     root_name: str = ''
 
     apply_time: ActionTimer | None = None
@@ -349,6 +348,7 @@ class InprogressPropsetOperation:
             return
 
         self.tree_data = TreeData(self.listener.tree, affected_lines)
+        assert self.tree_data.tree is not None
         self.cursor = SynCursor(self.tree_data.tree)
         if self.cursor.finished:
             # The source is basically an empty file.
@@ -359,10 +359,6 @@ class InprogressPropsetOperation:
         self.buf_changed = False
         self.prop_data.reset()
         self.apply_time = ActionTimer()
-
-        if not self.tree_data.affected_lines:
-            kwargs = {'bufnr': self.buf.number, 'id': 10_042, 'all': 1}
-            vim.prop_remove(kwargs, 1, len(self.buf))
         self._try_add_props()
 
     def _try_add_props(self, _timer: vpe.Timer | None = None) -> None:
@@ -375,6 +371,8 @@ class InprogressPropsetOperation:
         tree changes. This update operation may time out, in which case this
         method arranges for itself to be re-invoked after a short delay.
         """
+        assert self.cursor is not None
+        assert self.apply_time is not None
         self.apply_time.resume()
         if self.tree_data.affected_lines:
             all_props_added = self._do_add_props(
@@ -417,7 +415,7 @@ class InprogressPropsetOperation:
 
     def _do_add_props(
             self, cursor: SynCursor,
-            affected_lines: list[range] or None,
+            affected_lines: list[range] | None,
             prop_adjuster: TextRangeAdjuster | None = None,
         ) -> bool:
         """Add properties to reflect recent syntax tree changes.
@@ -433,12 +431,12 @@ class InprogressPropsetOperation:
 
         def overlaps_affected_lines(ts_node) -> bool:
             """Test if a Tree-sitter node overlaps any affected line range."""
-            if cursor.cleared:
+            if cursor.old_props_cleared:
                 return True
 
             start_lidx = ts_node.start_point.row
             end_lidx = ts_node.end_point.row + 1
-            for rng in affected_lines:
+            for rng in affected_lines:               # type: ignore[union-attr]
                 if not (rng.stop <= start_lidx or end_lidx <= rng.start):
                     return True
             return False
@@ -457,11 +455,12 @@ class InprogressPropsetOperation:
                 # If this node covers a small enough range of lines or has no
                 # child nodes, then clear any existing properties.
                 no_children = ts_node.child_count == 0
-                if (n_lines < 100  or no_children) and not cursor.cleared:
+                if (n_lines < 100  or no_children
+                        ) and not cursor.old_props_cleared:
                     vim.prop_remove(
                         kwargs, start_node_lidx + 1,
                         min(end_node_lidx, len(self.buf)))
-                    cursor.set_cleared()
+                    cursor.mark_as_old_props_removed()
 
                 self._apply_prop(ts_node, cursor.cname, prop_adjuster)
                 cursor.step_into()
@@ -577,13 +576,13 @@ class InprogressPropsetOperation:
             return before_node, after_node
 
         main_lang = self.buf.options.filetype
-        em_highlighter = embedded_syntax_handlers.get((main_lang, lang))
-        if em_highlighter is None:
+        sub_highlighter = embedded_syntax_handlers.get((main_lang, lang))
+        if sub_highlighter is None:
             return []
 
         node_s_lidx = ts_node.start_point[0]
         e_lidx = ts_node.end_point[0]
-        blocks = em_highlighter.find_embedded_code(
+        blocks = sub_highlighter.find_embedded_code(
             self.buf[node_s_lidx: e_lidx])
         if not blocks:
             return []
@@ -599,7 +598,7 @@ class InprogressPropsetOperation:
             code_lines = self.buf[a:b]
             code_lines = [line[block.indent:] for line in code_lines]
             code_bytes = '\n'.join(code_lines).encode('utf-8')
-            tree = em_highlighter.parser.parse(code_bytes, encoding='utf-8')
+            tree = sub_highlighter.parser.parse(code_bytes, encoding='utf-8')
             log(f'Parsed to tree {tree.root_node}')
             cursor = SynCursor(tree)
             self._do_add_props(
@@ -630,7 +629,7 @@ class SynCursor:
         self.cursor: TreeCursor = tree.walk()
         self.finished = False
         root_name = self.cursor.node.type
-        self.cname: tuple[tuple[str | None, str]] = (('', root_name),)
+        self.cname: CName = (('', root_name),)
         self.cleared_stack: list[bool] = [False]
         self.step_into()
 
@@ -639,15 +638,13 @@ class SynCursor:
         """The current Tree-sitter node."""
         return self.cursor.node
 
-    # TODO: Rename to make it clear this is about properties.
     @property
-    def cleared(self) -> Node:
-        """True if the current and child nodes have unset properties."""
+    def old_props_cleared(self) -> bool:
+        """True if old properties for node have been removed."""
         return self.cleared_stack[-1]
 
-    # TODO: Rename to make it clear this is about properties.
-    def set_cleared(self) -> None:
-        """Mark this position as a cleared (no properties) node."""
+    def mark_as_old_props_removed(self) -> None:
+        """Mark that old old properties for this node have been removed."""
         self.cleared_stack[-1] = True
 
     def step_into(self):
@@ -688,7 +685,7 @@ class Highlighter:
     def __init__(self, buf: vpe.Buffer, listener: Listener):
         self.buf = buf
         self.listener = listener
-        self.prop_set_operation = InprogressPropsetOperation(
+        self.prop_set_operation = InProgressPropsetOperation(
             buf, listener)
         self.listener.add_parse_complete_callback(self.handle_tree_change)
 
@@ -723,8 +720,14 @@ class EmbeddedHighlighter:
         # TODO:
         #   Make this a lazy property so that the Tree-sitter parser is
         #   not unconditionally imported.
-        self.parser = parsers.provide_parser(lang)
+        parser = parsers.provide_parser(lang)
+        if parser is None:
+            # TODO: Need custom exception or better supply the parser.
+            raise RuntimeError(f'No parser for {lang}')
 
+        self.parser: Parser = parser
+
+    @abstractmethod
     def find_embedded_code(
             self, lines: list[str]) -> list[NestedCodeBlockSpec]:
         """Find all blocks of embedded code.
@@ -737,6 +740,7 @@ class EmbeddedHighlighter:
             and end_column. The start and end columns for a Python range. Each
             start column should be set to trim off any unwanted indentation.
         """
+        return []
 
 
 def _find_syn_spec_tree_match(
@@ -744,7 +748,7 @@ def _find_syn_spec_tree_match(
         cname: CName,
         index: int,
         best_match: MatchNode | None = None,
-    ) -> tuple[MatchNode | None, int]:
+    ) -> MatchNode | None:
     """Recursively match `cname` against the `matching_node`.
 
     Recursive calls try to match against possible parents of the
@@ -765,7 +769,7 @@ def _find_syn_spec_tree_match(
         recursive calls.
     """
     field_name, node_name = cname[index]
-    branches = []
+    branches: list[ChoiceKey] = []
     if field_name:
         branches.append((field_name, node_name))
     branches.append(node_name)

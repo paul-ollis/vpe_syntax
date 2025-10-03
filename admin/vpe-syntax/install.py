@@ -170,7 +170,7 @@ def main(args: argparse.Namespace) -> None:
                 'tree-sitter-python==0.23.6', 'tree-sitter-c==0.21.4']):
             sys.exit(1)
 
-    # Finally, makes sure that the VPE plugin is correctly installed.
+    # Finally, make sure that the VPE plugin is correctly installed.
     print("Ensuring VPE's plugin code is installed...")
     install_vpe_plugin(vim_prog)
 
@@ -187,12 +187,12 @@ if __name__ == '__main__':
         '--vim-path',
         help="Specify the Vim program's path.")
 
-    args = parser.parse_args()
+    parsed_args = parser.parse_args()
 
     vim_script = Path('inst-vpe.vim')
     if not vim_script.exists():
         print(f'Script {vim_script} not found')
-        print('You must run this within the director containing README.txt')
+        print('You must run this within the directory containing README.txt')
         sys.exit(1)
 
-    main(args)
+    main(parsed_args)
