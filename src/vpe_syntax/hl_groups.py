@@ -59,7 +59,7 @@ STANDARD_GROUPS = (
     ('Macro', 50),
     ('PreCondit', 50),
 
-    ('Type', 50),
+    ('Type', 51),
     ('StorageClass', 50),
     ('Structure', 50),
     ('Typedef', 50),
@@ -84,47 +84,134 @@ STANDARD_GROUPS = (
     ('Removed', 50),
 )
 
+# TODO:
+#     Automatically create some obvious, non-controvertial groups such as
+#     'Bold' and 'Italic'. Then they can be link targets in the following list.
+
 #: Some additional syntax highlighting groups for more nuanced highlighting.
 #:
 #: Tree-sitter parsing make it relatively easy to identify more fine grained
 #: syntactic and semantic content from code. Hence this set of extended
 #: 'standard' groups.
 #:
+#: These syntax highlighting group names are based on the names that NeoVim uses
+#: for its Tree-Sitter based syntax highlighting. The Tree-sitter names are in
+#: the form used in Tree-sitter queries, for example, '@comment.documentation'.
+#:
+#: This list was formed by taking each name, removing the '@' and '.' characters
+#: and capitalizing each word. Any resulting name that matches an existing
+#: standard Vim syntax highlighting name was removed. Some other possibly
+#: useful names wer then added.
+#:
 #: In this table, each is group is linked to one of the 'standard' groups or
 #: `None` as a starting point. The intention is that users or colour schemes
 #: may over-ride these group definitions as required.
 EXT_STANDARD_GROUPS: list[tuple[str, str | None, int]] = [
-    ('Argument',            'Identifier',  55),
-    ('Attribute',           'Identifier',  55),
-    ('CalledFunction',      'Identifier',  55),
-    ('CalledMethod',        'Identifier',  58),
-    ('Class',               'Keyword',     55),
-    ('ClassName',           'Identifier',  55),
-    ('Constructor',         'Normal',      65),
-    ('DefinitionStarter',   'Identifier',  55),
-    ('Decorator',           'Identifier',  55),
-    ('DocString',           'Comment',     55),
-    ('FormatIdentifier',    'Normal',      45),
-    ('FormatSpecifier',     'Normal',      40),
-    ('FunctionDef',         'Keyword',     55),
-    ('FunctionName',        'Identifier',  55),
-    ('GenericType',         'Type',        55),
-    ('ImportedAliasedName', 'Normal',      55),
-    ('ImportedName',        'Normal',      55),
-    ('Import',              'Import',      55),
-    ('Interpolation',       'String',      40),
-    ('MethodCall',          'Normal',      55),
-    ('MethodDef',           'Keyword',     55),
-    ('MethodName',          'Identifier',  55),
-    ('None',                'Special',     55),
-    ('NonStandardSelf',     'Normal',      55),
-    ('Parameter',           'Normal',      55),
-    ('Return',              'Keyword',     55),
-    ('Self',                'Normal',      55),
-    ('SpecialPunctuation',  'Normal',      55),
-    ('StandardConst',       'Identifier',  55),
-    ('SyntaxError',         'WarningMsg',  10),
-    ('TypeBracket',         'Normal',      60),
+    ('Argument',                  'Identifier',      55),
+    ('Attribute',                 'Identifier',      55),
+    ('AttributeBuiltin',          'Keyword',         55),
+    ('CalledFunction',            'Identifier',      55),
+    ('CalledMethod',              'Identifier',      58),
+    ('CharacterSpecial',          'SpecialChar',     55),
+    ('Class',                     'Keyword',         55),
+    ('ClassName',                 'Identifier',      55),
+    ('CommentDocumentation',      'Comment',         55),
+    ('CommentError',              'Todo',            55),
+    ('CommentNote',               'Todo',            55),
+    ('CommentTodo',               'Todo',            55),
+    ('CommentWarning',            'Todo',            55),
+    ('ConstantBuiltin',           'Constant',        55),
+    ('ConstantMacro',             'Constant',        55),
+    ('Constructor',               'Normal',          65),
+    ('Decorator',                 'Identifier',      55),
+    ('DefinitionStarter',         'Identifier',      55),
+    ('DiffDelta',                 'DiffChange',      55),
+    ('DiffMinus',                 'DiffDelete',      55),
+    ('DiffPlus',                  'DiffAdd',         55),
+    ('FunctionBuiltin',           'Function',        55),
+    ('FunctionCall',              'Normal',          55),
+    ('FunctionDef',               'Keyword',         55),
+    ('FunctionMacro',             'Macro',           55),
+    ('FunctionMethod',            'Normal',          55),
+    ('FunctionMethodCall',        'Normal',          55),
+    ('FunctionName',              'Identifier',      55),
+    ('GenericType',               'Type',            55),
+    ('ImportedAliasedName',       'Normal',          55),
+    ('ImportedName',              'Normal',          55),
+    ('Import',                    'Include',         55),
+    ('Interpolation',             'String',          40),
+    ('KeywordConditional',        'Keyword',         55),
+    ('KeywordConditionalTernary', 'KeyWord',         55),
+    ('KeywordCoroutine',          'KeyWord',         55),
+    ('KeywordDebug',              'KeyWord',         55),
+    ('KeywordDirective',          'KeyWord',         55),
+    ('KeywordDirectiveDefine',    'KeyWord',         55),
+    ('KeywordException',          'KeyWord',         55),
+    ('KeywordFunction',           'KeyWord',         55),
+    ('KeywordImport',             'KeyWord',         55),
+    ('KeywordModifier',           'KeyWord',         55),
+    ('KeywordOperator',           'KeyWord',         55),
+    ('KeywordRepeat',             'KeyWord',         55),
+    ('KeywordReturn',             'KeyWord',         55),
+    ('KeywordType',               'KeyWord',         55),
+    ('MarkupHeading1',            'Underlined',      55),
+    ('MarkupHeading2',            'Underlined',      55),
+    ('MarkupHeading3',            'Underlined',      55),
+    ('MarkupHeading4',            'Underlined',      55),
+    ('MarkupHeading',             'Underlined',      55),
+    ('MarkupHeading5',            'Underlined',      55),
+    ('MarkupHeading6',            'Underlined',      55),
+    ('MarkupItalic',              'Normal',          55),
+    ('MarkupLink',                'Normal',          55),
+    ('MarkupLinkLabel',           'Normal',          55),
+    ('MarkupLinkUrl',             'Underlined',      55),
+    ('MarkupList',                'Normal',          55),
+    ('MarkupListChecked',         'Normal',          55),
+    ('MarkupListUnchecked',       'Normal',          55),
+    ('MarkupMath',                'Normal',          55),
+    ('MarkupQuote',               'Normal',          55),
+    ('MarkupRaw',                 'Normal',          55),
+    ('MarkupRawBlock',            'Normal',          55),
+    ('MarkupStrikethrough',       'Normal',          55),
+    ('MarkupStrong',              'Normal',          55),
+    ('MarkupUnderline',           'Underlined',      55),
+    ('MethodCall',                'Normal',          55),
+    ('MethodDef',                 'Keyword',         55),
+    ('MethodName',                'Identifier',      55),
+    ('Module',                    'Identifier',      55),
+    ('ModuleBuiltin',             'Keyword',         55),
+    ('None',                      'Special',         55),
+    ('NonStandardSelf',           'Normal',          55),
+    ('NumberFloat',               'Float',           55),
+    ('Parameter',                 'Normal',          55),
+    ('Property',                  'String',          55),
+    ('PunctuationBracket',        'Normal',          55),
+    ('PunctuationDelimiter',      'Normal',          55),
+    ('PunctuationSpecial',        'Normal',          55),
+    ('Return',                    'Keyword',         55),
+    ('Self',                      'Normal',          55),
+    ('SpecialPunctuation',        'Normal',          55),
+    ('StandardConst',             'Identifier',      55),
+    ('StringDocumentation',       'Comment',         55),
+    ('StringEscape',              'String',          55),
+    ('StringRegexp',              'String',          55),
+    ('StringSpecial',             'String',          55),
+    ('StringSpecialPath',         'String',          55),
+    ('StringSpecialSymbol',       'String',          55),
+    ('StringSpecialUrl',          'Underlines',      55),
+    ('SyntaxError',               'WarningMsg',      10),
+    ('TagAttribute',              'Normal',          55),
+    ('TagBuiltin',                'Normal',          55),
+    ('TagDelimiter',              'Normal',          55),
+    ('TypeBracket',               'Normal',          60),
+    ('TypeBuiltin',               'Keyword',         55),
+    ('TypeDefinition',            'Type',            55),
+    ('TypeParameter',             'Type',            55),
+    ('Variable',                  'Identifier',      55),
+    ('VariableBuiltin',           'Keyword',         55),
+    ('VariableMember',            'Identifier',      55),
+    ('VariableParameter',         'Identifier',      55),
+    ('VariableParameterBuiltin',  'Keyword',         55),
 ]
 
 
@@ -609,7 +696,7 @@ class Highlight:
             'end_incl': True,       # Do extend for inserts at the end.
             'highlight': self.name,
         }
-        if self.name == 'DocString':
+        if self.name == 'StringDocumentation':
             kw['spell'] = True
         else:
             kw['spell'] = False

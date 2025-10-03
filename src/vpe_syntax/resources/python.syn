@@ -8,7 +8,6 @@ break                              Keyword
 class                              Keyword
 comment                            Comment
 continue                           Keyword
-decorator                          Decorator
 def                                Keyword
 del                                Keyword
 elif                               Keyword
@@ -45,24 +44,37 @@ try                                Keyword
 while                              Keyword
 with                               Keyword
 
+key:string                         Property
+type:type                          Type
+
 yield
     yield                          Keyword
 
 module
     expression_statement
-        string                     DocString
+        string                     StringDocumentation
 
 class_definition
     class                          Class
     name:identifier                ClassName
     block
         expression_statement
-            string                 DocString
+            string                 StringDocumentation
         function_definition
             def                    MethodDef
         function_definition
             identifier             MethodName
 
+decorator
+    identifier                     Decorator
+    call
+        function:attribute         Decorator
+
+future_import_statement
+    from                           Import
+    import                         Import
+    __future__                     ImportedName
+    dotted_name                    StandardConst
 
 import_statement
     import                         Import
@@ -80,7 +92,7 @@ import_from_statement
 function_definition
     block
         expression_statement
-            string                 DocString
+            string                 StringDocumentation
     def                            FunctionDef
     name:identifier                FunctionName
     parameters
@@ -106,6 +118,7 @@ argument_list
 type_parameter
     [                              TypeBracket
     ]                              TypeBracket
+    type                           TypeParameter
 
 type
     identifier                     Type

@@ -119,14 +119,15 @@ class TweakerBuffer(vpe.ScratchBuffer):
             self, lidx, props: Sequence[tuple[str, int, int]],
         ) -> None:
         """Set the propery highlights for a line."""
-        vim.prop_clear(lidx + 1)
-        for prop_name, start_col, end_col in props:
-            kw = {
-                'bufnr': self.number,
-                'end_col': end_col + 1,
-                'type': prop_name,
-            }
-            vim.prop_add(lidx + 1, start_col + 1, kw)
+        with vpe.temp_active_buffer(self):
+            vim.prop_clear(lidx + 1)
+            for prop_name, start_col, end_col in props:
+                kw = {
+                    'bufnr': self.number,
+                    'end_col': end_col + 1,
+                    'type': prop_name,
+                }
+                vim.prop_add(lidx + 1, start_col + 1, kw)
 
 
 class Tweaker(vpe.CommandHandler, KeyHandler):
@@ -144,7 +145,7 @@ class Tweaker(vpe.CommandHandler, KeyHandler):
             self.buf[:] = [''] * 20
         self.layout_buffer()
         with vpe.temp_active_buffer(self.buf):
-            self.auto_map_keys(pass_info=True)
+            self.auto_map_keys(pass_info=True, buffer=self.buf)
         self.draw_widgets()
         self.colour_popup: ColourPopup | None = None
 
