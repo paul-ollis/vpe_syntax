@@ -21,7 +21,8 @@ from typing import ClassVar
 
 import vpe
 from vpe import vim
-from vpe.user_commands import Namespace, TopLevelSubcommandHandler
+from vpe.user_commands import (
+    CommandHandler, Namespace, TopLevelSubcommandHandler)
 
 import vpe_sitter
 from vpe_sitter.listen import Listener
@@ -61,11 +62,32 @@ def find_language_syntax_files(filetype: str) -> list[Traversable]:
     if syn_trav.is_file():
         traversables.append(syn_trav)
 
-    syn_path = Path.home() / f'.vim/plugin/vpe_syntax/{filetype}.syn'
+    syn_path = Path(vpe.dot_vim_dir()) / 'plugin/vpe_syntax/{filetype}.syn'
     if syn_path.is_file():
         traversables.append(syn_path)
 
     return traversables
+
+
+class ConfDirCommand(CommandHandler):
+    """The 'Synsit confdir' command implementation."""
+
+    def add_arguments(self) -> None:
+        """Add the arguments for this command."""
+        self.parser.add_argument(
+            '--user', action='store_true',
+            help="Show the user (rather than installation) directory.")
+
+    def handle_command(self, args: Namespace):
+        """Handle the 'Synsit confdir' command."""
+        if args.user:
+            syn_path = Path(vpe.dot_vim_dir()) / 'plugin/vpe_syntax'
+            vpe.echo_msg(str(syn_path))
+        else:
+            syn_trav: Traversable = files('vpe_syntax.resources')
+            text = str(syn_trav)
+            path_name = text.split("'")[1]
+            vpe.echo_msg(path_name)
 
 
 class Plugin(TopLevelSubcommandHandler):
@@ -80,6 +102,7 @@ class Plugin(TopLevelSubcommandHandler):
             ':simple', 'Open highlight tweaker.'),
         'rebuild': (
             ':simple', 'Rebuild syntax tables and highlighing.'),
+        'confdir': (ConfDirCommand, 'Display a configuration directory name.'),
     }
 
     def __init__(self, *args, **kwargs):
