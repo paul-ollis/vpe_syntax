@@ -87,6 +87,15 @@ class Plugin(TopLevelSubcommandHandler):
         super().__init__(*args, **kwargs)
         self.highlighters: dict[int, core.Highlighter] = {}
 
+    def _ensure_minimal_syntax(self) -> None:
+        # Make sure that syntax highlighting is activated, but clear any syntax
+        # for the current buffer. Then add a 'dummy' Spell cluster so that Vim
+        # will do limited spell checking.
+        vim.command('syntax clear')
+        vim.command('syntax cluster Spell contains=NothingToSeeHere')
+        if not vim.exists('g:syntax_on'):
+            vim.command('syntax enable')
+
     def handle_on(self, _args: Namespace) -> None:
         """Execute the 'Synsit on' command.
 
@@ -96,6 +105,7 @@ class Plugin(TopLevelSubcommandHandler):
         store = buf.retrieve_store('syntax-sitter')
         if store is not None:
             # Syntax highlighting is already active.
+            self._ensure_minimal_syntax()
             return
 
         if msg := vpe_sitter.treesit_current_buffer():
@@ -121,13 +131,7 @@ class Plugin(TopLevelSubcommandHandler):
         # Build the supporting tables.
         core.build_tables(filetype, traversables)
 
-        # Make sure that syntax highlighting is activated, but clear any syntax
-        # for the current buffer. Then add a 'dummy' Spell cluster so that Vim
-        # will do limited spell checking.
-        vim.command('syntax clear')
-        vim.command('syntax cluster Spell contains=NothingToSeeHere')
-        if not vim.exists('g:syntax_on'):
-            vim.command('syntax enable')
+        self._ensure_minimal_syntax()
         self._lazy_init()
 
         # Create a Highlighter connected to the buffer's `Listener` and add to
