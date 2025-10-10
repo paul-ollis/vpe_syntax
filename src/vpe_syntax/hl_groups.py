@@ -3,13 +3,16 @@ from __future__ import annotations
 
 from collections import defaultdict
 from colorsys import hls_to_rgb, rgb_to_hls
-from dataclasses import dataclass, field, fields
+from dataclasses import Field, dataclass, field, fields
 from functools import lru_cache, partial
 from math import sqrt
 from typing import Callable, ClassVar, TypeAlias
+from weakref import proxy
 
 import vpe
 from vpe import vim
+
+# pylint: disable=too-many-lines
 
 #: The standard code highlight groups and default property priorities.
 #:
@@ -72,16 +75,13 @@ STANDARD_GROUPS = (
     ('Debug', 50),
 
     ('Underlined', 50),
-
     ('Error', 50),
-
     ('Todo', 50),
-
-    ('Added', 50),
-
-    ('Changed', 50),
-
-    ('Removed', 50),
+    ('DiffAdd', 50),
+    ('DiffChange', 50),
+    ('DiffDelete', 50),
+    ('DiffText', 50),
+    ('DiffTextAdd', 50),
 )
 
 # TODO:
@@ -101,15 +101,15 @@ STANDARD_GROUPS = (
 #: This list was formed by taking each name, removing the '@' and '.' characters
 #: and capitalizing each word. Any resulting name that matches an existing
 #: standard Vim syntax highlighting name was removed. Some other possibly
-#: useful names wer then added.
+#: useful names were then added.
 #:
 #: In this table, each is group is linked to one of the 'standard' groups or
 #: `None` as a starting point. The intention is that users or colour schemes
 #: may over-ride these group definitions as required.
 EXT_STANDARD_GROUPS: list[tuple[str, str | None, int]] = [
     ('Argument',                  'Identifier',      55),
-    ('Attribute',                 'Identifier',      55),
     ('AttributeBuiltin',          'Keyword',         55),
+    ('Attribute',                 'Identifier',      55),
     ('CalledFunction',            'Identifier',      55),
     ('CalledMethod',              'Identifier',      58),
     ('CharacterSpecial',          'SpecialChar',     55),
@@ -132,8 +132,8 @@ EXT_STANDARD_GROUPS: list[tuple[str, str | None, int]] = [
     ('FunctionCall',              'Normal',          55),
     ('FunctionDef',               'Keyword',         55),
     ('FunctionMacro',             'Macro',           55),
-    ('FunctionMethod',            'Normal',          55),
     ('FunctionMethodCall',        'Normal',          55),
+    ('FunctionMethod',            'Normal',          55),
     ('FunctionName',              'Identifier',      55),
     ('GenericType',               'Type',            55),
     ('ImportedAliasedName',       'Normal',          55),
@@ -144,8 +144,8 @@ EXT_STANDARD_GROUPS: list[tuple[str, str | None, int]] = [
     ('KeywordConditionalTernary', 'KeyWord',         55),
     ('KeywordCoroutine',          'KeyWord',         55),
     ('KeywordDebug',              'KeyWord',         55),
-    ('KeywordDirective',          'KeyWord',         55),
     ('KeywordDirectiveDefine',    'KeyWord',         55),
+    ('KeywordDirective',          'KeyWord',         55),
     ('KeywordException',          'KeyWord',         55),
     ('KeywordFunction',           'KeyWord',         55),
     ('KeywordImport',             'KeyWord',         55),
@@ -158,28 +158,27 @@ EXT_STANDARD_GROUPS: list[tuple[str, str | None, int]] = [
     ('MarkupHeading2',            'Underlined',      55),
     ('MarkupHeading3',            'Underlined',      55),
     ('MarkupHeading4',            'Underlined',      55),
-    ('MarkupHeading',             'Underlined',      55),
     ('MarkupHeading5',            'Underlined',      55),
     ('MarkupHeading6',            'Underlined',      55),
-    ('MarkupItalic',              'Normal',          55),
-    ('MarkupLink',                'Normal',          55),
+    ('MarkupHeading',             'Underlined',      55),
     ('MarkupLinkLabel',           'Normal',          55),
+    ('MarkupLink',                'Normal',          55),
     ('MarkupLinkUrl',             'Underlined',      55),
-    ('MarkupList',                'Normal',          55),
     ('MarkupListChecked',         'Normal',          55),
+    ('MarkupList',                'Normal',          55),
     ('MarkupListUnchecked',       'Normal',          55),
     ('MarkupMath',                'Normal',          55),
     ('MarkupQuote',               'Normal',          55),
-    ('MarkupRaw',                 'Normal',          55),
     ('MarkupRawBlock',            'Normal',          55),
-    ('MarkupStrikethrough',       'Normal',          55),
-    ('MarkupStrong',              'Normal',          55),
+    ('MarkupRaw',                 'Normal',          55),
+    ('MarkupStrikethrough',       'Strikethrough',   55),
+    ('MarkupStrong',              'Bold',            55),
     ('MarkupUnderline',           'Underlined',      55),
     ('MethodCall',                'Normal',          55),
     ('MethodDef',                 'Keyword',         55),
     ('MethodName',                'Identifier',      55),
-    ('Module',                    'Identifier',      55),
     ('ModuleBuiltin',             'Keyword',         55),
+    ('Module',                    'Identifier',      55),
     ('None',                      'Special',         55),
     ('NonStandardSelf',           'Normal',          55),
     ('NumberFloat',               'Float',           55),
@@ -195,8 +194,8 @@ EXT_STANDARD_GROUPS: list[tuple[str, str | None, int]] = [
     ('StringDocumentation',       'Comment',         55),
     ('StringEscape',              'String',          55),
     ('StringRegexp',              'String',          55),
-    ('StringSpecial',             'String',          55),
     ('StringSpecialPath',         'String',          55),
+    ('StringSpecial',             'String',          55),
     ('StringSpecialSymbol',       'String',          55),
     ('StringSpecialUrl',          'Underlines',      55),
     ('SyntaxError',               'WarningMsg',      10),
@@ -207,29 +206,46 @@ EXT_STANDARD_GROUPS: list[tuple[str, str | None, int]] = [
     ('TypeBuiltin',               'Keyword',         55),
     ('TypeDefinition',            'Type',            55),
     ('TypeParameter',             'Type',            55),
-    ('Variable',                  'Identifier',      55),
     ('VariableBuiltin',           'Keyword',         55),
+    ('Variable',                  'Identifier',      55),
     ('VariableMember',            'Identifier',      55),
-    ('VariableParameter',         'Identifier',      55),
     ('VariableParameterBuiltin',  'Keyword',         55),
+    ('VariableParameter',         'Identifier',      55),
 ]
 
 
 class Colour:
     """The RGB representation of a colour.
 
-    If any component is -1 then the instance represents a non-colour.
+    If a colour has a name then it is effectively immutable. If the colour has
+    a valid number then it is colour terminal colour and effectively
+    immultable.
     """
-    def __init__(self, r: int = -1, g: int = -1, b: int = -1):
+    # pylint: disable=too-many-instance-attributes
+
+    _v_named_colours: ClassVar[dict] = {}
+
+    #< Construction
+    def __init__(
+            self, r: int, g: int, b: int, name: str = '', number: int = -1):
+        # pylint: disable=too-many-arguments,too-many-positional-arguments
         self._r = r
         self._g = g
         self._b = b
+        self._name = name
+        self.number = number
+        self._closest_colours: None | tuple[Colour, Colour] = None
+
+    @classmethod
+    def from_colour(cls, colour: Colour) -> Colour:
+        """Create an instance from another colour."""
+        return cls(colour.r, colour.g, colour.b)
 
     @classmethod
     def _from_colour_name(cls, name: str) -> Colour:
         """Create an instance from a colour name."""
         return cls._from_hex_rgb(
-            vim.vvars.colornames.get(f'{name.lower()}', '#ffffff'))
+            vim.vvars.colornames.get(name.lower(), '#ffffff'))
 
     @classmethod
     def _from_hex_rgb(cls, rgb_str: str) -> Colour:
@@ -239,139 +255,107 @@ class Colour:
         return cls(r, g, b)
 
     @classmethod
-    def parse(cls, name_or_hex: str) -> Colour:
+    def create_terminal_colour(
+            cls, rgb_str: str, number: int, name: str = '') -> Colour:
+        """Create an configured as a terminal colour."""
+        hex_strings = rgb_str[1:3], rgb_str[3:5], rgb_str[5:7]
+        r, g, b = [int(s, 16) for s in hex_strings]
+        colour = cls(r, g, b, name=name, number=number)
+        return colour
+
+    @classmethod
+    def parse(cls, name_or_hex: str, make_named: bool = False) -> Colour:
         """Create an instance from a colour name or hexadecimal."""
-        if name_or_hex.startswith('#'):
+        if not name_or_hex:
+            return unused_colour
+        elif name_or_hex == 'NONE':
+            return none_colour
+        elif name_or_hex.startswith('#'):
             return cls._from_hex_rgb(name_or_hex)
         else:
-            return cls._from_colour_name(name_or_hex)
+            colour = cls._from_colour_name(name_or_hex)
+            if make_named:
+                colour.name = name_or_hex
+            return colour
 
+    #< Properties and simple queries
     @property
     def r(self) -> int:
         """The red component value in the range -1 (non-colour) to 255."""
         return self._r
+
+    @r.setter
+    def r(self, value) -> None:
+        self._check_mutable()
+        self._r = value
 
     @property
     def g(self) -> int:
         """The green component value in the range -1 (non-colour) to 255."""
         return self._g
 
+    @g.setter
+    def g(self, value) -> None:
+        self._check_mutable()
+        self._g = value
+
     @property
     def b(self) -> int:
         """The blue component value in the range -1 (non-colour) to 255."""
         return self._b
 
-    def is_valid(self) -> bool:
-        """Test if all RGB values are valid."""
-        positive = self.r >= 0 and self.g >= 0 and self.b >= 0
-        inrange = self.r <= 255 and self.g <= 255 and self.b <= 255
-        return positive and inrange
-
-    def as_hex(self) -> bool:
-        """Provide Vim style hex representation."""
-        return f'#{self.r:02x}{self.g:02x}{self.b:02x}'
-
-    def as_decimal(self) -> bool:
-        """Provide decimal values."""
-        return f'({self.r},{self.g},{self.b})'
-
-    def __eq__(self, other: NamedColour) -> bool:
-        ra, ga, ba = self.r, self.g, self.b
-        rb, gb, bb = other.r, other.g, other.b
-        return (ra, ga, ba) == (rb, gb, bb)
-
-
-class NamedColour(Colour):
-    """The RGB representation of a named colour.
-
-    Instances of this class *must* have a valid name.
-    """
-    def __init__(self, name: str, r: int = -1, g: int = -1, b: int = -1):
-        super().__init__(r, g, b)
-        self._name = name
+    @b.setter
+    def b(self, value) -> None:
+        self._check_mutable()
+        self._b = value
 
     @property
     def name(self) -> str:
-        """The name defined for this colour's RGB values."""
+        """The name of this colour, which may be an empty string"""
+        if not self._name and self.number >= 0:
+            self._name = self.closest_colour.name
         return self._name
 
-    @classmethod
-    def parse(cls, name_or_hex: str) -> Colour:
-        """Create an instance from a colour name."""
-        assert name_or_hex and not name_or_hex.startswith('#')
-        colour = Colour.parse(name_or_hex)
-        return cls(name_or_hex, colour.r, colour.g, colour.b)
 
+    @name.setter
+    def name(self, value: str) -> None:
+        self._check_mutable()
+        self._name = value
 
-class TerminalColour(Colour):
-    """The RGB representation of a terminal colour.
+    @property
+    def closest_colour(self) -> Colour:
+        """A named colour that is the closest match to this colour."""
+        if self._closest_colours is None:
+            self._update_closest_colours()
+        assert self._closest_colours is not None
+        return self._closest_colours[0]
 
-    Instances of this class jhave a corresponding terminal colour code 0-256.
-    """
-    def __init__(self, hex_val: str, number: int):
-        colour = Colour.parse(hex_val)
-        super().__init__(colour.r, colour.g, colour.b)
-        self.number = number
+    @property
+    def closest_terminal_colour(self) -> Colour:
+        """A terminal colour that is the closest match to this colour."""
+        if self._closest_colours is None:
+            self._update_closest_colours()
+        assert self._closest_colours is not None
+        return self._closest_colours[1]
 
+    @property
+    def lightness(self) -> float:
+        """The lightness of this colour - black=0.0, white=255.0."""
+        _h, l, _s = rgb_to_hls(self.r, self.g, self.b)
+        return l
 
-class EditableColour(NamedColour):
-    """The RGB representation of a colour.
+    def as_hex(self) -> str:
+        """Provide Vim style hex representation."""
+        return f'#{self.r:02x}{self.g:02x}{self.b:02x}'
 
-    This over-rides `NamedColour` as follows:
+    def as_decimal(self) -> str:
+        """Provide decimal values."""
+        return f'({self.r},{self.g},{self.b})'
 
-    - The RGB components can be modified.
-    - This can be unnamed and, when it has a name, that name becomes invalid
-      when any of the RGB values difffer from those used at construction time.
-
-    @name_is_valid:
-        Set false the `name` does match the current RGB values.
-    @close_colour:
-        The closest, named `NamedColour` that matches the current RGB values.
-    """
-    # pylint: disable=too-many-instance-attributes
-
-    _v_colournames: ClassVar[dict] = {}
-
-    def __init__(self, name: str = '', r: int = -1, g: int = -1, b: int = -1):
-        super().__init__('--unused-name--', r, g, b)
-        self._name = name
-        self.name_is_valid = bool(name)
-        self.closest_colour: NamedColour | None = None
-        self.closest_terminal_color: TerminalColour | None = None
-        self._update_closest_colours()
-
-    @Colour.r.setter
-    def r(self, value) -> int:
-        self._r = value
-        self._match_validity(self._r)
-
-    @Colour.g.setter
-    def g(self, value) -> int:
-        self._g = value
-        self._match_validity(self._g)
-
-    @Colour.b.setter
-    def b(self, value) -> int:
-        self._b = value
-        self._match_validity(self._b)
-
-    @classmethod
-    def from_colour(cls, colour: Colour) -> EditableColour:
-        """Create an instance from another colour."""
-        return cls('', colour.r, colour.g, colour.b)
-
-    @classmethod
-    def parse(cls, name_or_hex: str) -> EditableColour:
-        """Create an instance from a colour name."""
-        if not name_or_hex:
-            return cls('', -1, -1, -1)
-        else:
-            colour = Colour.parse(name_or_hex)
-            name = '' if name_or_hex.startswith('#') else name_or_hex
-            return cls(name, colour.r, colour.g, colour.b)
-
+    #< Modification
     def adjust_component(self, name: str, inc: int):
         """Adjust one of the RGB values by defined amount."""
+        self._check_mutable()
         if name == 'r':
             self.r = min(255, max(0, self.r + inc))
         elif name == 'g':
@@ -380,69 +364,72 @@ class EditableColour(NamedColour):
             self.b = min(255, max(0, self.b + inc))
         self._update_closest_colours()
 
-    def adjust_brightness(self, inc: float) -> Colour:
+    def adjust_brightness(self, inc: float | int) -> bool:
         """Adjust the brightness of this colour.
 
         :inc:
             Change in brighness. -255.0 or less will completely darken and
             255.0 or above will completely lighten.
+        :return:
+            ``True`` if the a change was made.
         """
-        h, l, s = rgb_to_hls(self.r, self.g, self.b)
+        self._check_mutable()
+        prev = self.r, self.g, self.b
+        h, l, s = rgb_to_hls(*prev)
         l = min(255.0, max(0.0, l + inc))
         rf, gf, bf = hls_to_rgb(h, l, s)
         self.r = min(255, max(0, round(rf)))
         self.g = min(255, max(0, round(gf)))
         self.b = min(255, max(0, round(bf)))
-        self._update_closest_colours()
+        if prev != (self.r, self.g, self.b):
+            self._update_closest_colours()
+            return True
+        else:
+            return False
 
-    @property
-    def lightness(self) -> float:
-        """The lightness of this colour - black=0.0, white=255.0."""
-        _h, l, _s = rgb_to_hls(self.r, self.g, self.b)
-        return l
-
+    #< Comparison
     def distance(self, other: Colour) -> float:
         """Calculate the distance between 2 colours."""
         ra, ga, ba = self.r, self.g, self.b
         rb, gb, bb = other.r, other.g, other.b
-        return sqrt((ra - rb)**2 + (ga - gb)**2  + (ba - bb)**2)
+        d_r = (ra - rb) / 256
+        d_g = (ga - gb) / 256
+        d_b = (ba - bb) / 256
+        return sqrt(d_r**2 + d_g**2  + d_b**2)
 
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, Colour):
+            return False
+
+        ra, ga, ba = self.r, self.g, self.b
+        rb, gb, bb = other.r, other.g, other.b
+        return (ra, ga, ba) == (rb, gb, bb)
+
+    #< Support
     def _update_closest_colours(self) -> None:
-        """Update the closest colour match."""
-        if not self.is_valid():
-            self.closest_colour = None
-            self.closest_terminal_color = None
-            return
-
-        if len(self._v_colournames) == 0:
+        """Work out the closest colour match."""
+        if len(self._v_named_colours) == 0:
             for name in vim.vvars.colornames:
-                self._v_colournames[name] = NamedColour.parse(name)
+                self._v_named_colours[name] = Colour.parse(
+                    name, make_named=True)
 
-        self.closest_colour = self._find_closest(self.r, self.g, self.b)
-        self.closest_terminal_color = self._find_closest_terminal_colour(
+        closest_colour = self._find_closest(self.r, self.g, self.b)
+        closest_terminal_color = self._find_closest_terminal_colour(
             self.r, self.g, self.b)
-
-    def _match_validity(self, value: int) -> None:
-        """Make all components equally valid or invalid."""
-        if 0 <= value <= 255:
-            self._r = min(255, max(0, self._r))
-            self._g = min(255, max(0, self._g))
-            self._b = min(255, max(0, self._b))
-        else:
-            self._r = self._g = self._b = -1
+        self._closest_colours = closest_colour, closest_terminal_color
 
     @classmethod
     @lru_cache(200)
-    def _find_closest(cls, r, g, b) -> NamedColour:
+    def _find_closest(cls, r, g, b) -> Colour:
         _, closest_name = min(
             (cls._distance(r, g, b, name), name)
-            for name in cls._v_colournames
+            for name in cls._v_named_colours
         )
-        return cls._v_colournames[closest_name]
+        return cls._v_named_colours[closest_name]
 
     @classmethod
     @lru_cache(200)
-    def _find_closest_terminal_colour(cls, r, g, b) -> TerminalColour:
+    def _find_closest_terminal_colour(cls, r, g, b) -> Colour:
         _, code = min(
             (cls._terminal_distance(r, g, b, colour), colour.number)
             for colour in terminal_colour_list
@@ -451,7 +438,7 @@ class EditableColour(NamedColour):
 
     @classmethod
     def _distance(cls, r, g, b, name) -> float:
-        other = cls._v_colournames[name]
+        other = cls._v_named_colours[name]
         rb, gb, bb = other.r, other.g, other.b
         return sqrt((r - rb)**2 + (g - gb)**2  + (b - bb)**2)
 
@@ -459,6 +446,34 @@ class EditableColour(NamedColour):
     def _terminal_distance(cls, r, g, b, other) -> float:
         rb, gb, bb = other.r, other.g, other.b
         return sqrt((r - rb)**2 + (g - gb)**2  + (b - bb)**2)
+    def _check_mutable(self) -> None:
+        if self.name != '' or self.number >= 0:
+            raise AttributeError(f'{self} is immutable')
+
+    def __repr__(self) -> str:
+        s = [f'Colour:{self.as_hex()}']
+        s.append(self.as_decimal())
+        if self.name:
+            s.append(f'name={self.name}')
+        else:
+            s.append('unnamed')
+        if self.number >= 0:
+            s.append('terminal')
+        return ','.join(s)
+
+
+class UnusedColour(Colour):
+    """Used to indicate an unset colour attribute."""
+
+    def __init__(self):
+        super().__init__(255, 255, 255, name='_unused_')
+
+
+#: A colour indicating the absence of a real colour value.
+unused_colour = Colour(255, 255, 255, name='_unused_')
+
+#: A colour indicating that a syntax colour is set as ``NONE``.
+none_colour = Colour(255, 255, 255, name='_none_')
 
 
 @dataclass
@@ -474,12 +489,13 @@ class HighlightSettings:
     italic: bool = False
     standout: bool = False
     nocombine: bool = False
-    fg: EditableColour = field(default_factory=EditableColour)
-    bg: EditableColour = field(default_factory=EditableColour)
-    sp: EditableColour = field(default_factory=EditableColour)
+    fg: Colour = field(default_factory=lambda: unused_colour)
+    bg: Colour = field(default_factory=lambda: unused_colour)
+    sp: Colour = field(default_factory=lambda: unused_colour)
     fg_name: str = ''
     bg_name: str = ''
     sp_name: str = ''
+    parent: Highlight | None = None
 
     mode: ClassVar[str]
     ortho_map: ClassVar[dict[str, str]] = {
@@ -497,13 +513,35 @@ class HighlightSettings:
     #- underdashed: bool = False
 
     @classmethod
+    def _hl_attrs_from_synid_attr_value(
+            cls, f: Field, s_value: str) -> dict[str, Colour | str]:
+        try:
+            value: int = int(s_value)
+        except ValueError:
+            pass
+        else:
+            colour = cterm_code_to_colour.get(
+                value, cterm_code_to_colour[213])
+            s_value = colour.as_hex()
+
+        kw: dict[str, Colour | str] = {}
+        kw[f.name] = Colour.parse(s_value or 'NONE')
+        if not s_value.startswith('#'):
+            kw[f'{f.name}_name'] = s_value
+        else:
+            kw[f'{f.name}_name'] = ''
+
+        return kw
+
+    @classmethod
     def from_syn_id(cls, synid: int) -> HighlightSettings:
         """Create by querying a given highlight group.
 
         :synid:
             The ID of the syntax group to query.
         """
-        kw = {}
+        # pylint: disable=too-many-branches
+        kw: dict[str, int | str | Colour] = {}
         for f in fields(cls):
             query_name = f.name
             if query_name in cls.unused:
@@ -512,23 +550,10 @@ class HighlightSettings:
                 continue
             value = vim.synIDattr(synid, f.name, cls.mode)
             if f.name in ('fg', 'bg', 'sp'):
-                try:
-                    value = int(value)
-                except ValueError:
-                    pass
-                else:
-                    t_colour = cterm_code_to_colour.get(
-                        value, cterm_code_to_colour[15])
-                    value = t_colour.as_hex()
-
-                kw[f.name] = EditableColour.parse(value)
-                if not value.startswith('#'):
-                    kw[f'{f.name}_name'] = value
-                else:
-                    kw[f'{f.name}_name'] = ''
+                kw.update(cls._hl_attrs_from_synid_attr_value(f, value))
             elif value and value in '01':
                 kw[f.name] = bool(int(value))
-        return cls(**kw)
+        return cls(**kw)                               # type: ignore[arg-type]
 
     def format_args(self) -> dict:
         """Format the arguments for these settings."""
@@ -540,14 +565,22 @@ class HighlightSettings:
                 continue
             if arg_name in self.meta:
                 continue
+            if arg_name in self.unused:
+                continue
+
             value = getattr(self, arg_name)
-            if f.type == 'bool':
-                if value:
-                    attrs.append(arg_name)
-            elif arg_name not in self.unused:
-                arg_name = self.ortho_map.get(arg_name, arg_name)
-                if value.is_valid():
-                    args[f'{self.mode}{arg_name}'] = value.as_hex()
+            assert value is not None, f'Got None for {arg_name}'
+            match f.type:
+                case 'bool':
+                    if value:
+                        attrs.append(arg_name)
+                case 'Colour':
+                    arg_name = self.ortho_map.get(arg_name, arg_name)
+                    if value is none_colour:
+                        args[f'{self.mode}{arg_name}'] = 'NONE'
+                    elif value is not unused_colour:
+                        args[f'{self.mode}{arg_name}'] = value.as_hex()
+
         if attrs:
             args[f'{self.mode}'] = ','.join(attrs)
         return args
@@ -557,6 +590,9 @@ class HighlightSettings:
         parts = [
             f'{name}={value}' for name, value in self.format_args().items()]
         return ' '.join(parts)
+
+    def __post_init__(self):
+        assert self.fg is not None
 
 
 class TermSettings(HighlightSettings):
@@ -568,33 +604,91 @@ class TermSettings(HighlightSettings):
     }
     unused: ClassVar[set[str]] = set(('fg', 'bg', 'sp'))
 
+    def copy(self, parent: Highlight) -> TermSettings:
+        """Create a shallow copy, with the given parent `Highlight`."""
+        inst = self.__class__(**self.__dict__)
+        inst.parent = parent
+        return inst
+
 
 class ColourTermSettings(HighlightSettings):
     """Highlight settings for a colour terminal."""
 
     mode: ClassVar[str] = 'cterm'
+    ortho_map: ClassVar[dict[str, str]] = HighlightSettings.ortho_map | {
+        'sp': 'ul',
+    }
 
     def format_args(self) -> dict:
         """Format the arguments for these settings."""
         args = super().format_args()
         for f in fields(self):
+            if f.type != 'Colour':
+                continue
             arg_name = f.name
-            value = getattr(self, arg_name)
+            if self.parent is None or not self.parent.cterm_copies_gui:
+                value = getattr(self, arg_name)
+            else:
+                value = getattr(self.parent.gui, arg_name)
             arg_name = self.ortho_map.get(arg_name, arg_name)
             arg_name = f'{self.mode}{arg_name}'
             if arg_name not in args or f.type == 'bool':
                 continue
 
-            if value.is_valid():
-                e_colour = EditableColour.from_colour(value)
-                args[arg_name] = str(e_colour.closest_terminal_color.number)
+            if value is none_colour:
+                args[arg_name] = 'NONE'
+            elif value is not unused_colour:
+                e_colour = Colour.from_colour(value)
+                if e_colour.closest_terminal_colour is not None:
+                    args[arg_name] = str(
+                        e_colour.closest_terminal_colour.number)
         return args
+
+    def copy(self, parent: Highlight) -> ColourTermSettings:
+        """Create a shallow copy, with the given parent `Highlight`."""
+        inst = self.__class__(**self.__dict__)
+        inst.parent = parent
+        return inst
 
 
 class GUISettings(HighlightSettings):
     """Highlight settings for a GUI."""
 
     mode: ClassVar[str] = 'gui'
+
+    def copy(self, parent: Highlight) -> GUISettings:
+        """Create a shallow copy, with the given parent `Highlight`."""
+        inst = self.__class__(**self.__dict__)
+        inst.parent = parent
+        return inst
+
+    def clear_flags(self) -> None:
+        """Clear flags (bold, *etc.*) settings."""
+        for f in fields(self.__class__):
+            if f.type == 'bool':
+                setattr(self, f.name, False)
+
+    def set_flags_from_colour_term_settings(
+            self, cterm: ColourTermSettings) -> None:
+        """Set flags (bold, *etc.*) using a colour terminal's settings."""
+        for f in fields(self.__class__):
+            if f.type == 'bool':
+                setattr(self, f.name, getattr(cterm, f.name))
+
+    def set_from_colour_term_settings(self, cterm: ColourTermSettings) -> None:
+        """Set attributes using a colour terminal's settings."""
+        self.fg = cterm.fg
+        self.bg = cterm.bg
+        self.sp = cterm.sp
+        for f in fields(self.__class__):
+            if f.type == 'bool':
+                setattr(self, f.name, getattr(cterm, f.name))
+
+    def set_from_mono_term_settings(self, cterm: TermSettings) -> None:
+        """Set attributes using a mono terminal's settings."""
+        for f in fields(self.__class__):
+            if f.type == 'bool':
+                setattr(self, f.name, getattr(cterm, f.name))
 
 
 @dataclass
@@ -613,50 +707,163 @@ class Highlight:
         The GUI mode settings.
     @link:
         The name of another highlight group that this links to.
-    @subscribers:
-        Subscribed callbacks for attribute changes.
+    @cterm_copies_gui:
+        When set the colour term settings are a copy of the GUI settings. The
+        fg, bg and ul settings are set to the closest colour matches.
     """
-
     name: str
     term: TermSettings | None = None
     cterm: ColourTermSettings | None = None
     gui: GUISettings | None = None
-    link: str | None = None
-    subscribers: dict[str, list[Callable]] = field(
-        default_factory=partial(defaultdict, list))
+    link: str = ''
+    cterm_copies_gui: bool = False
 
-    @property
-    def is_linked(self) -> bool:
-        """Flag indicating if this is just linked to another highlight."""
-        return None in (self.term, self.cterm, self.gui)
+    #< Construction
+    def __post_init__(self):
+        if self.gui:
+            self.gui.parent = proxy(self)
+        if self.cterm:
+            self.cterm.parent = proxy(self)
+        if self.term:
+            self.term.parent = proxy(self)
 
-    def break_link(self) -> None:
-        """Break this highlights link by copying the linked group."""
-        if not self.is_linked:
-            return
-        self.copy_from_named_highlight(self.link)
+    @classmethod
+    def from_name(cls, name: str) -> Highlight:
+        """Create by querying a named highlight group."""
+        hid = vim.hlID(name)
+        synid = vim.synIDtrans(hid)
+        kw = {}
+        kw['term'] = TermSettings.from_syn_id(synid)
+        kw['cterm'] = ColourTermSettings.from_syn_id(synid)
+        kw['gui'] = GUISettings.from_syn_id(synid)
+
+        return cls(name=name, **kw)                    # type: ignore[arg-type]
 
     def copy_from_named_highlight(self, other: str) -> None:
         """Copy settings from another highlight."""
         e_colour = Highlight.from_name(other)
-        self.term = e_colour.term
-        self.cterm = e_colour.cterm
-        self.gui = e_colour.gui
+        if e_colour.term is not None:
+            self.term = e_colour.term.copy(proxy(self))
+        else:
+            self.term = None
+
+        if e_colour.cterm is not None:
+            self.cterm = e_colour.cterm.copy(proxy(self))
+        else:
+            self.cterm = None
+
+        if e_colour.gui is not None:
+            self.gui = e_colour.gui.copy(proxy(self))
+        else:
+            self.gui = None
+
+    #< Properties and attribute access
+    @property
+    def is_linked(self) -> bool:
+        """Flag indicating if this is just linked to another highlight."""
+        return bool(self.link)
+
+    def resolve_link(self) -> Highlight:
+        """Resolve linked name to the `Highlight`."""
+        if not self.link:
+            return self
+        linked_group = _highlights.get(self.link)
+        return linked_group.resolve_link()
+
+    def get_colour(self, attr: str) -> Colour:
+        """Get a colour for a given attribute name.
+
+        :attr: The name as a two part dotted identifier; *e.g.* gui.fg.
+        """
+        if self.link:
+            linked_group = _highlights.get(self.link)
+            if linked_group:
+                return linked_group.get_colour(attr)
+            else:
+                return unused_colour
+
+        mode, rgb_name = attr.split('.')
+        try:
+            if mode == 'cterm' and self.cterm_copies_gui:
+                colour = getattr(getattr(self, 'gui'), rgb_name)
+                return colour.closest_terminal_colour
+            else:
+                return getattr(getattr(self, mode), rgb_name)
+        except AttributeError:
+            return unused_colour
+
+    def get_flag(self, attr: str) -> bool:
+        """Get a boolean value for a given attribute name.
+
+        :attr: The name as a two part dotted identifier; *e.g.* gui.bold.
+        """
+        if self.link:
+            linked_group = _highlights.get(self.link)
+            if linked_group:
+                return linked_group.get_flag(attr)
+            else:
+                return False
+
+        mode, flag_name = attr.split('.')
+        try:
+            if mode == 'cterm' and self.cterm_copies_gui:
+                colour = getattr(getattr(self, 'gui'), flag_name)
+                return colour.closest_terminal_colour
+            else:
+                return getattr(getattr(self, mode), flag_name)
+        except AttributeError:
+            return False
+
+    #< Editing
+    def set_colour(self, attr: str, colour: Colour) -> None:
+        """Set a colour for a given attribute name.
+
+        :attr:   The name as a two part dotted identifier; *e.g.* gui.fg.
+        :colour: The colour value for the attribute.
+        """
+        assert colour is not None
+        mode, rgb_name = attr.split('.')
+        if mode == 'cterm' and self.cterm_copies_gui:
+            return
+        setattr(getattr(self, mode), rgb_name, Colour.from_colour(colour))
+
+    def set_flag(self, attr: str, value: bool) -> None:
+        """Set a the boolean value for a given attribute name.
+
+        :attr:  The name as a two part dotted identifier; *e.g.* gui.bold.
+        :value: The boolean value for the attribute.
+        """
+        mode, attr_name = attr.split('.')
+        if mode == 'cterm' and self.cterm_copies_gui:
+            return
+        setattr(getattr(self, mode), attr_name, value)
+
+    def set_copy_gui(self, flag: bool) -> None:
+        """Set the cterm_copies_gui flag - useful for undo operations."""
+        self.cterm_copies_gui = flag
+
+    def break_link(self) -> None:
+        """Break this highlights link by copying the linked group."""
+        if not self.link:
+            return
+        self.copy_from_named_highlight(self.link)
+        self.link = ''
+
+    def set_link(self, name: str) -> None:
+        """Set the name of the linked group."""
+        assert name
+        self.link = name
 
     def adjust_brightness(self, attr: str, inc: float) -> None:
         """Adjust one a colour's brighness."""
         rgb = self.get_colour(attr)
         rgb.adjust_brightness(inc)
-        for handler in self.subscribers[attr]:
-            handler(rgb)
 
     def adjust_rgb(self, attr: str, key: str, inc: int) -> None:
         """Adjust one of the RGB attributes."""
         inc = 10 if key.upper() == key else -10
         rgb = self.get_colour(attr)
         rgb.adjust_component(key.lower(), inc)
-        for handler in self.subscribers[attr]:
-            handler(rgb)
 
     def toggle_flag(self, mode: str, flag: str) -> None:
         """Adjust one of the flag attributes."""
@@ -664,17 +871,16 @@ class Highlight:
         value = getattr(settings, flag)
         setattr(settings, flag, not value)
 
-    def subscribe(self, attr: str, callback: Callable) -> None:
-        """Subscribe to be notified of changes to an attribute."""
-        self.subscribers[attr].append(callback)
-
+    #< Manifesting actions
     def format_args(self) -> dict:
         """Format the arguments for a Vim highlight command."""
-        kw = {}
-        if not self.is_linked:
-            kw.update(self.term.format_args())
-            kw.update(self.cterm.format_args())
+        kw: dict[str, str | int] = {}
+        if self.gui is not None:
             kw.update(self.gui.format_args())
+        if self.cterm is not None:
+            kw.update(self.cterm.format_args())
+        if self.term is not None:
+            kw.update(self.term.format_args())
         return kw
 
     def apply(self, *, dump: bool = False) -> None:
@@ -705,42 +911,22 @@ class Highlight:
         if not known_prop_info:
             vim.prop_type_add(name, kw)
 
-    def get_colour(self, attr: str) -> Colour:
-        """Get a colour for a given attribute name."""
-        mode, rgb_name = attr.split('.')
-        try:
-            return getattr(getattr(self, mode), rgb_name)
-        except AttributeError:
-            return EditableColour(-1, -1, -1)
-
-    def set_colour(self, attr: str, colour: EditableColour) -> None:
-        """Set a colour for a given attribute name."""
-        mode, rgb_name = attr.split('.')
-        return setattr(getattr(self, mode), rgb_name, colour)
-
-    @classmethod
-    def from_name(cls, name: str) -> Highlight:
-        """Create by querying a named highlight group."""
-        hid = vim.hlID(name)
-        synid = vim.synIDtrans(hid)
-        kw = {}
-        kw['term'] = TermSettings.from_syn_id(synid)
-        kw['cterm'] = ColourTermSettings.from_syn_id(synid)
-        kw['gui'] = GUISettings.from_syn_id(synid)
-
-        return cls(name=name, **kw)
-
 
 def create_std_group_highlights() -> dict[str, Highlight]:
     """Create a `Highlight` instances for each standard highlight group."""
     table = {}
     for name, priority in STANDARD_GROUPS:
+        group = None
         if vim.hlID(name) == 0:
-            # Just because the Vim help says it is a standard group doe not
+            # Just because the Vim help says it is a standard group does not
             # mean it actually exists.
-            continue
+            if name not in _should_be_standard_goups:
+                continue
+            group = _should_be_standard_goups[name]
+            group.apply()
 
-        group = Highlight.from_name(name)
+        if group is None:
+            group = Highlight.from_name(name)
         table[name] = group
         group.create_property(priority)
         group.create_property(priority, level=1)
@@ -751,6 +937,7 @@ def create_ext_std_group_highlights() -> dict[str, Highlight]:
     """Create a `Highlight` instances for each extension highlight group."""
     table = {}
     for name, link, priority in EXT_STANDARD_GROUPS:
+        link = link or ''
         hid = vim.hlID(name)
         if hid == 0:
             # Group is not defined so add it.
@@ -759,6 +946,7 @@ def create_ext_std_group_highlights() -> dict[str, Highlight]:
                 group = Highlight(name, link='Normal')
             else:
                 group = Highlight(name, link=link)
+            group.apply()
         else:
             # Group is defined so use defined settings.
             attr_dict = dict(vim.hlget(name)[0])
@@ -768,278 +956,311 @@ def create_ext_std_group_highlights() -> dict[str, Highlight]:
             else:
                 group = Highlight.from_name(name)
         table[name] = group
-        group.apply()
         group.create_property(priority=priority)
         group.create_property(priority=priority, level=1)
     return table
 
 
-# A list of the terminal colours.
+terminal_16_colour_list = (
+    Colour.create_terminal_colour('#000000', number=0, name='Black'),
+    Colour.create_terminal_colour('#800000', number=1, name='DarkBlue'),
+    Colour.create_terminal_colour('#008000', number=2, name='DarkGreen'),
+    Colour.create_terminal_colour('#808000', number=3, name='DarkCyan'),
+    Colour.create_terminal_colour('#000080', number=4, name='DarkRed'),
+    Colour.create_terminal_colour('#800080', number=5, name='DarkMagenta'),
+    Colour.create_terminal_colour('#008080', number=6, name='DarkYellow'),
+    Colour.create_terminal_colour('#c0c0c0', number=7, name='LightGray'),
+    Colour.create_terminal_colour('#808080', number=8, name='DarkGray'),
+    Colour.create_terminal_colour('#ff0000', number=9, name='LightBlue'),
+    Colour.create_terminal_colour('#00ff00', number=10, name='LightGreen'),
+    Colour.create_terminal_colour('#ffff00', number=11, name='LightCyan'),
+    Colour.create_terminal_colour('#0000ff', number=12, name='LightRed'),
+    Colour.create_terminal_colour('#ff00ff', number=13, name='LightMagenta'),
+    Colour.create_terminal_colour('#00ffff', number=14, name='LightYellow'),
+    Colour.create_terminal_colour('#ffffff', number=15, name='White'),
+)
 terminal_colour_list = (
-    TerminalColour('#000000', 0),
-    TerminalColour('#800000', 1),
-    TerminalColour('#008000', 2),
-    TerminalColour('#808000', 3),
-    TerminalColour('#000080', 4),
-    TerminalColour('#800080', 5),
-    TerminalColour('#008080', 6),
-    TerminalColour('#c0c0c0', 7),
-    TerminalColour('#808080', 8),
-    TerminalColour('#ff0000', 9),
-    TerminalColour('#00ff00', 10),
-    TerminalColour('#ffff00', 11),
-    TerminalColour('#0000ff', 12),
-    TerminalColour('#ff00ff', 13),
-    TerminalColour('#00ffff', 14),
-    TerminalColour('#ffffff', 15),
-    TerminalColour('#000000', 16),
-    TerminalColour('#00005f', 17),
-    TerminalColour('#000087', 18),
-    TerminalColour('#0000af', 19),
-    TerminalColour('#0000d7', 20),
-    TerminalColour('#0000ff', 21),
-    TerminalColour('#005f00', 22),
-    TerminalColour('#005f5f', 23),
-    TerminalColour('#005f87', 24),
-    TerminalColour('#005faf', 25),
-    TerminalColour('#005fd7', 26),
-    TerminalColour('#005fff', 27),
-    TerminalColour('#008700', 28),
-    TerminalColour('#00875f', 29),
-    TerminalColour('#008787', 30),
-    TerminalColour('#0087af', 31),
-    TerminalColour('#0087d7', 32),
-    TerminalColour('#0087ff', 33),
-    TerminalColour('#00af00', 34),
-    TerminalColour('#00af5f', 35),
-    TerminalColour('#00af87', 36),
-    TerminalColour('#00afaf', 37),
-    TerminalColour('#00afd7', 38),
-    TerminalColour('#00afff', 39),
-    TerminalColour('#00d700', 40),
-    TerminalColour('#00d75f', 41),
-    TerminalColour('#00d787', 42),
-    TerminalColour('#00d7af', 43),
-    TerminalColour('#00d7d7', 44),
-    TerminalColour('#00d7ff', 45),
-    TerminalColour('#00ff00', 46),
-    TerminalColour('#00ff5f', 47),
-    TerminalColour('#00ff87', 48),
-    TerminalColour('#00ffaf', 49),
-    TerminalColour('#00ffd7', 50),
-    TerminalColour('#00ffff', 51),
-    TerminalColour('#5f0000', 52),
-    TerminalColour('#5f005f', 53),
-    TerminalColour('#5f0087', 54),
-    TerminalColour('#5f00af', 55),
-    TerminalColour('#5f00d7', 56),
-    TerminalColour('#5f00ff', 57),
-    TerminalColour('#5f5f00', 58),
-    TerminalColour('#5f5f5f', 59),
-    TerminalColour('#5f5f87', 60),
-    TerminalColour('#5f5faf', 61),
-    TerminalColour('#5f5fd7', 62),
-    TerminalColour('#5f5fff', 63),
-    TerminalColour('#5f8700', 64),
-    TerminalColour('#5f875f', 65),
-    TerminalColour('#5f8787', 66),
-    TerminalColour('#5f87af', 67),
-    TerminalColour('#5f87d7', 68),
-    TerminalColour('#5f87ff', 69),
-    TerminalColour('#5faf00', 70),
-    TerminalColour('#5faf5f', 71),
-    TerminalColour('#5faf87', 72),
-    TerminalColour('#5fafaf', 73),
-    TerminalColour('#5fafd7', 74),
-    TerminalColour('#5fafff', 75),
-    TerminalColour('#5fd700', 76),
-    TerminalColour('#5fd75f', 77),
-    TerminalColour('#5fd787', 78),
-    TerminalColour('#5fd7af', 79),
-    TerminalColour('#5fd7d7', 80),
-    TerminalColour('#5fd7ff', 81),
-    TerminalColour('#5fff00', 82),
-    TerminalColour('#5fff5f', 83),
-    TerminalColour('#5fff87', 84),
-    TerminalColour('#5fffaf', 85),
-    TerminalColour('#5fffd7', 86),
-    TerminalColour('#5fffff', 87),
-    TerminalColour('#870000', 88),
-    TerminalColour('#87005f', 89),
-    TerminalColour('#870087', 90),
-    TerminalColour('#8700af', 91),
-    TerminalColour('#8700d7', 92),
-    TerminalColour('#8700ff', 93),
-    TerminalColour('#875f00', 94),
-    TerminalColour('#875f5f', 95),
-    TerminalColour('#875f87', 96),
-    TerminalColour('#875faf', 97),
-    TerminalColour('#875fd7', 98),
-    TerminalColour('#875fff', 99),
-    TerminalColour('#878700', 100),
-    TerminalColour('#87875f', 101),
-    TerminalColour('#878787', 102),
-    TerminalColour('#8787af', 103),
-    TerminalColour('#8787d7', 104),
-    TerminalColour('#8787ff', 105),
-    TerminalColour('#87af00', 106),
-    TerminalColour('#87af5f', 107),
-    TerminalColour('#87af87', 108),
-    TerminalColour('#87afaf', 109),
-    TerminalColour('#87afd7', 110),
-    TerminalColour('#87afff', 111),
-    TerminalColour('#87d700', 112),
-    TerminalColour('#87d75f', 113),
-    TerminalColour('#87d787', 114),
-    TerminalColour('#87d7af', 115),
-    TerminalColour('#87d7d7', 116),
-    TerminalColour('#87d7ff', 117),
-    TerminalColour('#87ff00', 118),
-    TerminalColour('#87ff5f', 119),
-    TerminalColour('#87ff87', 120),
-    TerminalColour('#87ffaf', 121),
-    TerminalColour('#87ffd7', 122),
-    TerminalColour('#87ffff', 123),
-    TerminalColour('#af0000', 124),
-    TerminalColour('#af005f', 125),
-    TerminalColour('#af0087', 126),
-    TerminalColour('#af00af', 127),
-    TerminalColour('#af00d7', 128),
-    TerminalColour('#af00ff', 129),
-    TerminalColour('#af5f00', 130),
-    TerminalColour('#af5f5f', 131),
-    TerminalColour('#af5f87', 132),
-    TerminalColour('#af5faf', 133),
-    TerminalColour('#af5fd7', 134),
-    TerminalColour('#af5fff', 135),
-    TerminalColour('#af8700', 136),
-    TerminalColour('#af875f', 137),
-    TerminalColour('#af8787', 138),
-    TerminalColour('#af87af', 139),
-    TerminalColour('#af87d7', 140),
-    TerminalColour('#af87ff', 141),
-    TerminalColour('#afaf00', 142),
-    TerminalColour('#afaf5f', 143),
-    TerminalColour('#afaf87', 144),
-    TerminalColour('#afafaf', 145),
-    TerminalColour('#afafd7', 146),
-    TerminalColour('#afafff', 147),
-    TerminalColour('#afd700', 148),
-    TerminalColour('#afd75f', 149),
-    TerminalColour('#afd787', 150),
-    TerminalColour('#afd7af', 151),
-    TerminalColour('#afd7d7', 152),
-    TerminalColour('#afd7ff', 153),
-    TerminalColour('#afff00', 154),
-    TerminalColour('#afff5f', 155),
-    TerminalColour('#afff87', 156),
-    TerminalColour('#afffaf', 157),
-    TerminalColour('#afffd7', 158),
-    TerminalColour('#afffff', 159),
-    TerminalColour('#d70000', 160),
-    TerminalColour('#d7005f', 161),
-    TerminalColour('#d70087', 162),
-    TerminalColour('#d700af', 163),
-    TerminalColour('#d700d7', 164),
-    TerminalColour('#d700ff', 165),
-    TerminalColour('#d75f00', 166),
-    TerminalColour('#d75f5f', 167),
-    TerminalColour('#d75f87', 168),
-    TerminalColour('#d75faf', 169),
-    TerminalColour('#d75fd7', 170),
-    TerminalColour('#d75fff', 171),
-    TerminalColour('#d78700', 172),
-    TerminalColour('#d7875f', 173),
-    TerminalColour('#d78787', 174),
-    TerminalColour('#d787af', 175),
-    TerminalColour('#d787d7', 176),
-    TerminalColour('#d787ff', 177),
-    TerminalColour('#d7af00', 178),
-    TerminalColour('#d7af5f', 179),
-    TerminalColour('#d7af87', 180),
-    TerminalColour('#d7afaf', 181),
-    TerminalColour('#d7afd7', 182),
-    TerminalColour('#d7afff', 183),
-    TerminalColour('#d7d700', 184),
-    TerminalColour('#d7d75f', 185),
-    TerminalColour('#d7d787', 186),
-    TerminalColour('#d7d7af', 187),
-    TerminalColour('#d7d7d7', 188),
-    TerminalColour('#d7d7ff', 189),
-    TerminalColour('#d7ff00', 190),
-    TerminalColour('#d7ff5f', 191),
-    TerminalColour('#d7ff87', 192),
-    TerminalColour('#d7ffaf', 193),
-    TerminalColour('#d7ffd7', 194),
-    TerminalColour('#d7ffff', 195),
-    TerminalColour('#ff0000', 196),
-    TerminalColour('#ff005f', 197),
-    TerminalColour('#ff0087', 198),
-    TerminalColour('#ff00af', 199),
-    TerminalColour('#ff00d7', 200),
-    TerminalColour('#ff00ff', 201),
-    TerminalColour('#ff5f00', 202),
-    TerminalColour('#ff5f5f', 203),
-    TerminalColour('#ff5f87', 204),
-    TerminalColour('#ff5faf', 205),
-    TerminalColour('#ff5fd7', 206),
-    TerminalColour('#ff5fff', 207),
-    TerminalColour('#ff8700', 208),
-    TerminalColour('#ff875f', 209),
-    TerminalColour('#ff8787', 210),
-    TerminalColour('#ff87af', 211),
-    TerminalColour('#ff87d7', 212),
-    TerminalColour('#ff87ff', 213),
-    TerminalColour('#ffaf00', 214),
-    TerminalColour('#ffaf5f', 215),
-    TerminalColour('#ffaf87', 216),
-    TerminalColour('#ffafaf', 217),
-    TerminalColour('#ffafd7', 218),
-    TerminalColour('#ffafff', 219),
-    TerminalColour('#ffd700', 220),
-    TerminalColour('#ffd75f', 221),
-    TerminalColour('#ffd787', 222),
-    TerminalColour('#ffd7af', 223),
-    TerminalColour('#ffd7d7', 224),
-    TerminalColour('#ffd7ff', 225),
-    TerminalColour('#ffff00', 226),
-    TerminalColour('#ffff5f', 227),
-    TerminalColour('#ffff87', 228),
-    TerminalColour('#ffffaf', 229),
-    TerminalColour('#ffffd7', 230),
-    TerminalColour('#ffffff', 231),
-    TerminalColour('#080808', 232),
-    TerminalColour('#121212', 233),
-    TerminalColour('#1c1c1c', 234),
-    TerminalColour('#262626', 235),
-    TerminalColour('#303030', 236),
-    TerminalColour('#3a3a3a', 237),
-    TerminalColour('#444444', 238),
-    TerminalColour('#4e4e4e', 239),
-    TerminalColour('#585858', 240),
-    TerminalColour('#626262', 241),
-    TerminalColour('#6c6c6c', 242),
-    TerminalColour('#767676', 243),
-    TerminalColour('#808080', 244),
-    TerminalColour('#8a8a8a', 245),
-    TerminalColour('#949494', 246),
-    TerminalColour('#9e9e9e', 247),
-    TerminalColour('#a8a8a8', 248),
-    TerminalColour('#b2b2b2', 249),
-    TerminalColour('#bcbcbc', 250),
-    TerminalColour('#c6c6c6', 251),
-    TerminalColour('#d0d0d0', 252),
-    TerminalColour('#dadada', 253),
-    TerminalColour('#e4e4e4', 254),
-    TerminalColour('#eeeeee', 255),
+    Colour.create_terminal_colour('#000000', number=16),
+    Colour.create_terminal_colour('#00005f', number=17),
+    Colour.create_terminal_colour('#000087', number=18),
+    Colour.create_terminal_colour('#0000af', number=19),
+    Colour.create_terminal_colour('#0000d7', number=20),
+    Colour.create_terminal_colour('#0000ff', number=21),
+    Colour.create_terminal_colour('#005f00', number=22),
+    Colour.create_terminal_colour('#005f5f', number=23),
+    Colour.create_terminal_colour('#005f87', number=24),
+    Colour.create_terminal_colour('#005faf', number=25),
+    Colour.create_terminal_colour('#005fd7', number=26),
+    Colour.create_terminal_colour('#005fff', number=27),
+    Colour.create_terminal_colour('#008700', number=28),
+    Colour.create_terminal_colour('#00875f', number=29),
+    Colour.create_terminal_colour('#008787', number=30),
+    Colour.create_terminal_colour('#0087af', number=31),
+    Colour.create_terminal_colour('#0087d7', number=32),
+    Colour.create_terminal_colour('#0087ff', number=33),
+    Colour.create_terminal_colour('#00af00', number=34),
+    Colour.create_terminal_colour('#00af5f', number=35),
+    Colour.create_terminal_colour('#00af87', number=36),
+    Colour.create_terminal_colour('#00afaf', number=37),
+    Colour.create_terminal_colour('#00afd7', number=38),
+    Colour.create_terminal_colour('#00afff', number=39),
+    Colour.create_terminal_colour('#00d700', number=40),
+    Colour.create_terminal_colour('#00d75f', number=41),
+    Colour.create_terminal_colour('#00d787', number=42),
+    Colour.create_terminal_colour('#00d7af', number=43),
+    Colour.create_terminal_colour('#00d7d7', number=44),
+    Colour.create_terminal_colour('#00d7ff', number=45),
+    Colour.create_terminal_colour('#00ff00', number=46),
+    Colour.create_terminal_colour('#00ff5f', number=47),
+    Colour.create_terminal_colour('#00ff87', number=48),
+    Colour.create_terminal_colour('#00ffaf', number=49),
+    Colour.create_terminal_colour('#00ffd7', number=50),
+    Colour.create_terminal_colour('#00ffff', number=51),
+    Colour.create_terminal_colour('#5f0000', number=52),
+    Colour.create_terminal_colour('#5f005f', number=53),
+    Colour.create_terminal_colour('#5f0087', number=54),
+    Colour.create_terminal_colour('#5f00af', number=55),
+    Colour.create_terminal_colour('#5f00d7', number=56),
+    Colour.create_terminal_colour('#5f00ff', number=57),
+    Colour.create_terminal_colour('#5f5f00', number=58),
+    Colour.create_terminal_colour('#5f5f5f', number=59),
+    Colour.create_terminal_colour('#5f5f87', number=60),
+    Colour.create_terminal_colour('#5f5faf', number=61),
+    Colour.create_terminal_colour('#5f5fd7', number=62),
+    Colour.create_terminal_colour('#5f5fff', number=63),
+    Colour.create_terminal_colour('#5f8700', number=64),
+    Colour.create_terminal_colour('#5f875f', number=65),
+    Colour.create_terminal_colour('#5f8787', number=66),
+    Colour.create_terminal_colour('#5f87af', number=67),
+    Colour.create_terminal_colour('#5f87d7', number=68),
+    Colour.create_terminal_colour('#5f87ff', number=69),
+    Colour.create_terminal_colour('#5faf00', number=70),
+    Colour.create_terminal_colour('#5faf5f', number=71),
+    Colour.create_terminal_colour('#5faf87', number=72),
+    Colour.create_terminal_colour('#5fafaf', number=73),
+    Colour.create_terminal_colour('#5fafd7', number=74),
+    Colour.create_terminal_colour('#5fafff', number=75),
+    Colour.create_terminal_colour('#5fd700', number=76),
+    Colour.create_terminal_colour('#5fd75f', number=77),
+    Colour.create_terminal_colour('#5fd787', number=78),
+    Colour.create_terminal_colour('#5fd7af', number=79),
+    Colour.create_terminal_colour('#5fd7d7', number=80),
+    Colour.create_terminal_colour('#5fd7ff', number=81),
+    Colour.create_terminal_colour('#5fff00', number=82),
+    Colour.create_terminal_colour('#5fff5f', number=83),
+    Colour.create_terminal_colour('#5fff87', number=84),
+    Colour.create_terminal_colour('#5fffaf', number=85),
+    Colour.create_terminal_colour('#5fffd7', number=86),
+    Colour.create_terminal_colour('#5fffff', number=87),
+    Colour.create_terminal_colour('#870000', number=88),
+    Colour.create_terminal_colour('#87005f', number=89),
+    Colour.create_terminal_colour('#870087', number=90),
+    Colour.create_terminal_colour('#8700af', number=91),
+    Colour.create_terminal_colour('#8700d7', number=92),
+    Colour.create_terminal_colour('#8700ff', number=93),
+    Colour.create_terminal_colour('#875f00', number=94),
+    Colour.create_terminal_colour('#875f5f', number=95),
+    Colour.create_terminal_colour('#875f87', number=96),
+    Colour.create_terminal_colour('#875faf', number=97),
+    Colour.create_terminal_colour('#875fd7', number=98),
+    Colour.create_terminal_colour('#875fff', number=99),
+    Colour.create_terminal_colour('#878700', number=100),
+    Colour.create_terminal_colour('#87875f', number=101),
+    Colour.create_terminal_colour('#878787', number=102),
+    Colour.create_terminal_colour('#8787af', number=103),
+    Colour.create_terminal_colour('#8787d7', number=104),
+    Colour.create_terminal_colour('#8787ff', number=105),
+    Colour.create_terminal_colour('#87af00', number=106),
+    Colour.create_terminal_colour('#87af5f', number=107),
+    Colour.create_terminal_colour('#87af87', number=108),
+    Colour.create_terminal_colour('#87afaf', number=109),
+    Colour.create_terminal_colour('#87afd7', number=110),
+    Colour.create_terminal_colour('#87afff', number=111),
+    Colour.create_terminal_colour('#87d700', number=112),
+    Colour.create_terminal_colour('#87d75f', number=113),
+    Colour.create_terminal_colour('#87d787', number=114),
+    Colour.create_terminal_colour('#87d7af', number=115),
+    Colour.create_terminal_colour('#87d7d7', number=116),
+    Colour.create_terminal_colour('#87d7ff', number=117),
+    Colour.create_terminal_colour('#87ff00', number=118),
+    Colour.create_terminal_colour('#87ff5f', number=119),
+    Colour.create_terminal_colour('#87ff87', number=120),
+    Colour.create_terminal_colour('#87ffaf', number=121),
+    Colour.create_terminal_colour('#87ffd7', number=122),
+    Colour.create_terminal_colour('#87ffff', number=123),
+    Colour.create_terminal_colour('#af0000', number=124),
+    Colour.create_terminal_colour('#af005f', number=125),
+    Colour.create_terminal_colour('#af0087', number=126),
+    Colour.create_terminal_colour('#af00af', number=127),
+    Colour.create_terminal_colour('#af00d7', number=128),
+    Colour.create_terminal_colour('#af00ff', number=129),
+    Colour.create_terminal_colour('#af5f00', number=130),
+    Colour.create_terminal_colour('#af5f5f', number=131),
+    Colour.create_terminal_colour('#af5f87', number=132),
+    Colour.create_terminal_colour('#af5faf', number=133),
+    Colour.create_terminal_colour('#af5fd7', number=134),
+    Colour.create_terminal_colour('#af5fff', number=135),
+    Colour.create_terminal_colour('#af8700', number=136),
+    Colour.create_terminal_colour('#af875f', number=137),
+    Colour.create_terminal_colour('#af8787', number=138),
+    Colour.create_terminal_colour('#af87af', number=139),
+    Colour.create_terminal_colour('#af87d7', number=140),
+    Colour.create_terminal_colour('#af87ff', number=141),
+    Colour.create_terminal_colour('#afaf00', number=142),
+    Colour.create_terminal_colour('#afaf5f', number=143),
+    Colour.create_terminal_colour('#afaf87', number=144),
+    Colour.create_terminal_colour('#afafaf', number=145),
+    Colour.create_terminal_colour('#afafd7', number=146),
+    Colour.create_terminal_colour('#afafff', number=147),
+    Colour.create_terminal_colour('#afd700', number=148),
+    Colour.create_terminal_colour('#afd75f', number=149),
+    Colour.create_terminal_colour('#afd787', number=150),
+    Colour.create_terminal_colour('#afd7af', number=151),
+    Colour.create_terminal_colour('#afd7d7', number=152),
+    Colour.create_terminal_colour('#afd7ff', number=153),
+    Colour.create_terminal_colour('#afff00', number=154),
+    Colour.create_terminal_colour('#afff5f', number=155),
+    Colour.create_terminal_colour('#afff87', number=156),
+    Colour.create_terminal_colour('#afffaf', number=157),
+    Colour.create_terminal_colour('#afffd7', number=158),
+    Colour.create_terminal_colour('#afffff', number=159),
+    Colour.create_terminal_colour('#d70000', number=160),
+    Colour.create_terminal_colour('#d7005f', number=161),
+    Colour.create_terminal_colour('#d70087', number=162),
+    Colour.create_terminal_colour('#d700af', number=163),
+    Colour.create_terminal_colour('#d700d7', number=164),
+    Colour.create_terminal_colour('#d700ff', number=165),
+    Colour.create_terminal_colour('#d75f00', number=166),
+    Colour.create_terminal_colour('#d75f5f', number=167),
+    Colour.create_terminal_colour('#d75f87', number=168),
+    Colour.create_terminal_colour('#d75faf', number=169),
+    Colour.create_terminal_colour('#d75fd7', number=170),
+    Colour.create_terminal_colour('#d75fff', number=171),
+    Colour.create_terminal_colour('#d78700', number=172),
+    Colour.create_terminal_colour('#d7875f', number=173),
+    Colour.create_terminal_colour('#d78787', number=174),
+    Colour.create_terminal_colour('#d787af', number=175),
+    Colour.create_terminal_colour('#d787d7', number=176),
+    Colour.create_terminal_colour('#d787ff', number=177),
+    Colour.create_terminal_colour('#d7af00', number=178),
+    Colour.create_terminal_colour('#d7af5f', number=179),
+    Colour.create_terminal_colour('#d7af87', number=180),
+    Colour.create_terminal_colour('#d7afaf', number=181),
+    Colour.create_terminal_colour('#d7afd7', number=182),
+    Colour.create_terminal_colour('#d7afff', number=183),
+    Colour.create_terminal_colour('#d7d700', number=184),
+    Colour.create_terminal_colour('#d7d75f', number=185),
+    Colour.create_terminal_colour('#d7d787', number=186),
+    Colour.create_terminal_colour('#d7d7af', number=187),
+    Colour.create_terminal_colour('#d7d7d7', number=188),
+    Colour.create_terminal_colour('#d7d7ff', number=189),
+    Colour.create_terminal_colour('#d7ff00', number=190),
+    Colour.create_terminal_colour('#d7ff5f', number=191),
+    Colour.create_terminal_colour('#d7ff87', number=192),
+    Colour.create_terminal_colour('#d7ffaf', number=193),
+    Colour.create_terminal_colour('#d7ffd7', number=194),
+    Colour.create_terminal_colour('#d7ffff', number=195),
+    Colour.create_terminal_colour('#ff0000', number=196),
+    Colour.create_terminal_colour('#ff005f', number=197),
+    Colour.create_terminal_colour('#ff0087', number=198),
+    Colour.create_terminal_colour('#ff00af', number=199),
+    Colour.create_terminal_colour('#ff00d7', number=200),
+    Colour.create_terminal_colour('#ff00ff', number=201),
+    Colour.create_terminal_colour('#ff5f00', number=202),
+    Colour.create_terminal_colour('#ff5f5f', number=203),
+    Colour.create_terminal_colour('#ff5f87', number=204),
+    Colour.create_terminal_colour('#ff5faf', number=205),
+    Colour.create_terminal_colour('#ff5fd7', number=206),
+    Colour.create_terminal_colour('#ff5fff', number=207),
+    Colour.create_terminal_colour('#ff8700', number=208),
+    Colour.create_terminal_colour('#ff875f', number=209),
+    Colour.create_terminal_colour('#ff8787', number=210),
+    Colour.create_terminal_colour('#ff87af', number=211),
+    Colour.create_terminal_colour('#ff87d7', number=212),
+    Colour.create_terminal_colour('#ff87ff', number=213),
+    Colour.create_terminal_colour('#ffaf00', number=214),
+    Colour.create_terminal_colour('#ffaf5f', number=215),
+    Colour.create_terminal_colour('#ffaf87', number=216),
+    Colour.create_terminal_colour('#ffafaf', number=217),
+    Colour.create_terminal_colour('#ffafd7', number=218),
+    Colour.create_terminal_colour('#ffafff', number=219),
+    Colour.create_terminal_colour('#ffd700', number=220),
+    Colour.create_terminal_colour('#ffd75f', number=221),
+    Colour.create_terminal_colour('#ffd787', number=222),
+    Colour.create_terminal_colour('#ffd7af', number=223),
+    Colour.create_terminal_colour('#ffd7d7', number=224),
+    Colour.create_terminal_colour('#ffd7ff', number=225),
+    Colour.create_terminal_colour('#ffff00', number=226),
+    Colour.create_terminal_colour('#ffff5f', number=227),
+    Colour.create_terminal_colour('#ffff87', number=228),
+    Colour.create_terminal_colour('#ffffaf', number=229),
+    Colour.create_terminal_colour('#ffffd7', number=230),
+    Colour.create_terminal_colour('#ffffff', number=231),
+    Colour.create_terminal_colour('#080808', number=232),
+    Colour.create_terminal_colour('#121212', number=233),
+    Colour.create_terminal_colour('#1c1c1c', number=234),
+    Colour.create_terminal_colour('#262626', number=235),
+    Colour.create_terminal_colour('#303030', number=236),
+    Colour.create_terminal_colour('#3a3a3a', number=237),
+    Colour.create_terminal_colour('#444444', number=238),
+    Colour.create_terminal_colour('#4e4e4e', number=239),
+    Colour.create_terminal_colour('#585858', number=240),
+    Colour.create_terminal_colour('#626262', number=241),
+    Colour.create_terminal_colour('#6c6c6c', number=242),
+    Colour.create_terminal_colour('#767676', number=243),
+    Colour.create_terminal_colour('#808080', number=244),
+    Colour.create_terminal_colour('#8a8a8a', number=245),
+    Colour.create_terminal_colour('#949494', number=246),
+    Colour.create_terminal_colour('#9e9e9e', number=247),
+    Colour.create_terminal_colour('#a8a8a8', number=248),
+    Colour.create_terminal_colour('#b2b2b2', number=249),
+    Colour.create_terminal_colour('#bcbcbc', number=250),
+    Colour.create_terminal_colour('#c6c6c6', number=251),
+    Colour.create_terminal_colour('#d0d0d0', number=252),
+    Colour.create_terminal_colour('#dadada', number=253),
+    Colour.create_terminal_colour('#e4e4e4', number=254),
+    Colour.create_terminal_colour('#eeeeee', number=255),
 )
 
-# A mapping from cterm code to TerminalColour.
+# A single white Colour instance to use as a default.
+default_white = Colour(255, 255, 255, 'White')
+
+#: A mapping from cterm code to TerminalColour.
+#:
+#: Note that the entries for colour numbers 0 to 15 map to the closest matching
+#: entries in the 16 to 255 range.
 cterm_code_to_colour = {c.number: c for c in terminal_colour_list}
+for t_colour in terminal_16_colour_list:
+    _, closest = min(
+        ((t_colour.distance(ext_colour), ext_colour)
+        for ext_colour in terminal_colour_list),
+        key=lambda el: el[0])
+    cterm_code_to_colour[t_colour.number] = closest
 
 # A mapping from name to `Highlight` instance.
 _highlights: dict[str, Highlight] = {}
 
+# A list of groups that should be standard but, at time of writing, are not.
+_should_be_standard_goups = {
+    'Bold': Highlight(
+        name='Bold',
+        term=TermSettings(bold=True),
+        cterm=ColourTermSettings(bold=True),
+        gui=GUISettings(bold=True),
+    ),
+    'Italic': Highlight(
+        name='Italic',
+        term=TermSettings(bold=True),
+        cterm=ColourTermSettings(bold=True),
+        gui=GUISettings(bold=True),
+    ),
+    'Strikethrough': Highlight(
+        name='Strikethrough',
+        term=TermSettings(strikethrough=True),
+        cterm=ColourTermSettings(strikethrough=True),
+        gui=GUISettings(strikethrough=True),
+    ),
+}
 
 DynAttrTypes: TypeAlias = (
     dict[str, Highlight]

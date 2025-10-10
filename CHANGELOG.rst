@@ -2,6 +2,19 @@
 Change Log
 ==========
 
+Version 0.2.0
+-------------
+
+- Made the colour scheme tweaker (Synsit tweak) actually usable.
+
+
+Version 0.1.2
+-------------
+
+- Fixed broken ``Synsit`` command. Just a change to the required versions of
+  VPE and VPE-Sitter.
+
+
 Version 0.1.1
 -------------
 

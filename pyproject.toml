@@ -18,7 +18,8 @@ classifiers = [
     "Topic :: Education",
 ]
 dependencies = [
-    'vpe-sitter>=0.1.1',
+    'vpe>=0.7.3',
+    'vpe-sitter>=0.1.2',
 ]
 
 [tool.setuptools.package-data]
