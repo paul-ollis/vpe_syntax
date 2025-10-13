@@ -62,11 +62,22 @@ def find_language_syntax_files(filetype: str) -> list[Traversable]:
     if syn_trav.is_file():
         traversables.append(syn_trav)
 
-    syn_path = Path(vpe.dot_vim_dir()) / 'plugin/vpe_syntax/{filetype}.syn'
+    syn_path = Path(vpe.dot_vim_dir()) / f'plugin/vpe_syntax/{filetype}.syn'
     if syn_path.is_file():
         traversables.append(syn_path)
 
     return traversables
+
+
+def _user_config_dirpath() -> Path:
+    return Path(vpe.dot_vim_dir()) / 'plugin/vpe_syntax'
+
+
+def _std_config_dirpath() -> Path:
+    syn_trav: Traversable = files('vpe_syntax.resources')
+    text = str(syn_trav)
+    path_name = text.split("'")[1]
+    return Path(path_name)
 
 
 class ConfDirCommand(CommandHandler):
@@ -81,13 +92,49 @@ class ConfDirCommand(CommandHandler):
     def handle_command(self, args: Namespace):
         """Handle the 'Synsit confdir' command."""
         if args.user:
-            syn_path = Path(vpe.dot_vim_dir()) / 'plugin/vpe_syntax'
-            vpe.echo_msg(str(syn_path))
+            vpe.echo_msg(str(_user_config_dirpath()))
         else:
-            syn_trav: Traversable = files('vpe_syntax.resources')
-            text = str(syn_trav)
-            path_name = text.split("'")[1]
-            vpe.echo_msg(path_name)
+            vpe.echo_msg(str(_std_config_dirpath()))
+
+
+class OpenConfigCommand(CommandHandler):
+    """The 'Synsit openconfig ...' command implementation."""
+
+    def add_arguments(self) -> None:
+        """Add the arguments for this command."""
+        self.parser.add_argument(
+            '--std', action='store_true',
+            help="Open the standard file from the installation.")
+        self.parser.add_argument(
+            'conf_file_name',
+            help="The name of the language.")
+
+    def handle_command(self, args: Namespace):
+        """Handle the 'Synsit confdir' command."""
+        config_dir = Path(vpe.dot_vim_dir()) / 'plugin/vpe_syntax'
+        if not config_dir.is_dir():
+            try:
+                config_dir.mkdir(parents=True)
+            except OSError:
+                vpe.log(
+                    f'{config_dir} is not a directory and could not be'
+                    ' created!')
+
+        if args.std:
+            conf_path = _std_config_dirpath() / args.conf_file_name
+            if not conf_path.is_file():
+                vpe.error_msg(
+                    f'There is no {args.conf_file_name} installed.')
+                return
+
+            vpe.commands.view(f'{conf_path}')
+            vim.current.buffer.options.modifiable = False
+        else:
+            conf_path = config_dir / args.conf_file_name
+            vpe.commands.edit(f'{conf_path}')
+            if not conf_path.is_file():
+                text = '# Tree structure                   Property name'
+                vim.current.buffer[:] = [text]
 
 
 class Plugin(TopLevelSubcommandHandler):
@@ -98,6 +145,8 @@ class Plugin(TopLevelSubcommandHandler):
     subcommands = {
         'on': (
             ':simple', 'Turn on syntax highlighting for the current buffer.'),
+        'openconfig':
+            (OpenConfigCommand, 'Open the user configuration file.'),
         'tweak': (
             ':simple', 'Open highlight tweaker.'),
         'rebuild': (
@@ -130,6 +179,10 @@ class Plugin(TopLevelSubcommandHandler):
         filetype = buf.options.filetype
         traversables: list[Traversable] = find_language_syntax_files(filetype)
         if not traversables:
+            s = [f'No {filetype}.syn file found in:']
+            s.append(f'    {_std_config_dirpath()}')
+            s.append(f'    {_user_config_dirpath()}')
+            vpe.log('\n'.join(s))
             vpe.error_msg(
                 f'Tree-sitter syntax not defined for {filetype}.')
             return
