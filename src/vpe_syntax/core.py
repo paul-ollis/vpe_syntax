@@ -692,7 +692,22 @@ class Highlighter:
     def handle_tree_change(
             self, code: ConditionCode, affected_lines: AffectedLines) -> None:
         """Take action when the buffer's code tree has changed."""
-        self.prop_set_operation.handle_tree_change(code, affected_lines)
+        if code == ConditionCode.RELOAD:
+            vpe.call_soon(self.ensure_minimal_syntax)
+        else:
+            self.prop_set_operation.handle_tree_change(code, affected_lines)
+
+    def ensure_minimal_syntax(self) -> None:
+        """Ensure only minimal standard syntax highlighting is active."""
+        with vpe.temp_active_buffer(self.buf):
+            vim.command('syntax clear')
+            vim.command('syntax cluster Spell contains=NothingToSeeHere')
+            if not vim.exists('g:syntax_on'):
+                vim.command('syntax enable')
+            self.buf.vars.current_syntax = self.buf.options.filetype
+            print("PAUL: Clearing standard syntax highlighting.",
+                vim.current.buffer.name,
+                repr(self.buf.vars.current_syntax))
 
 
 @dataclass
