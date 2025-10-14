@@ -13,23 +13,45 @@ Welcome to the Tree-sitter support for Vim.
     This is version 0.2.0
 
     This is alpha software, but I use it all the time and it has been behaving
-    reliably for me (but see the issues and limitations listed below).
+    reliably for me.
 
-    This library is targeted at 'vanilla' `Vim`_. It is doubtful that this could
-    easily be made to work with Neovim and, in any case, Neovim already has
-    quite mature `support for Tree-sitter`_.
-
-    Currently the only supported languages are Python and C. It should be not
-    difficult to add many of the languages that are available on PyPi. They
-    typically have names like tree-sitter-bash, tree-sitter-pascal, *etc*. In
-    the next point release (0.2), I plan to provide documentation that will
-    include how to add support for other languages.
+    Built in support for Python and C code. The documentation added in version
+    0.2 provided guidelines on how to add other languages. Submissions for
+    additional languages support gratefully received.
 
 
 News
 ====
 
-Version 0.1.1 enables support for Windows.
+Version 0.2 significant changes:
+
+- Some initial documentation at https://vpe-syntax.readthedocs.io/en/latest/.
+  This is in its very early stages, but does include a tutorial on adding
+  languages.
+
+  Any feedback is welcome at https://github.com/paul-ollis/vpe_syntax, either as
+  issues or discussions.
+
+- A (hopefully) well defined set of highlight groups (modelled on NeoVim's set).
+  This should support suitably rich colour schemes.
+
+  .. image:: https://raw.githubusercontent.com/paul-ollis/vpe_syntax/refs/heads/v0.2/doc/source/_static/added-colour.png
+
+  The right hand side Vim session above is using VPE-Syntax with the colour scheme
+  in ``examples/colour_scheme.vim``.
+
+- A functional colour scheme editor is available. Start it with the command::
+
+     Synsit tweak
+
+  https://github.com/user-attachments/assets/52d80562-0ce1-43e4-857e-f7be479cec6c
+
+- This version uses version 0.2 of VPE-Sitter, which has New code to work
+  around the way older versions of Vim (before 9.1.1782) buffer changes when
+  using the ``listener_add`` function.
+
+  Several days of running with this change suggest that it is stable, providing
+  solid syntax highlighting.
 
 
 Requirements
@@ -39,10 +61,8 @@ You will need Vim 9.0 or greater and obviously it will have to have been built
 with Python 3 support, at least version 3.11.
 
 
-Issues and limitations
-======================
-
-There are some notable issues.
+Limitations
+===========
 
 1. No support for selective spell checking.
 
@@ -52,29 +72,9 @@ There are some notable issues.
    do not currently provide support for this. I hope to supply a pull request to
    get this added to Vim.
 
-   If possible, release 0.2 will contain a work around.
+   If possible, release 0.3 will contain a work around.
 
-2. Synchronisation issues.
-
-   VPE_Syntax (well strictly speaking `VPE_Sitter`_) depends on Vim's
-   ``listener_add()`` functionality to track when a buffer's contents change and
-   thus trigger Tree-sitter incremental re-parse operations. Under some
-   circumstances, the ``listener_add`` provided callbacks can occur in away that
-   does not properly match the buffer's contents. This results incorrect syntax
-   highlighting.
-
-   This occurs relatively rarely. When it does, you can save your file and then
-   reload (using ``:e!``) to force a full re-parse.
-
-   I plan to supply a pull request to allow VPE_Syntax to get the change
-   notifications that it needs for reliable operation.
-
-   If possible, release 0.2 will contain a work around.
-
-3. Embedded language support is largely missing.
-
-   There is some experimental code, but I am not really using it and it may not
-   even work at the moment.
+2. No support for embedded languages. This is planned work.
 
 
 Installation

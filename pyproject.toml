@@ -32,8 +32,8 @@ dependencies = [
 [project.scripts]
 
 [project.urls]
-# "Homepage" = "https://github.com/paul-ollis/clippets"
-# "Bug Tracker" = "https://github.com/paul-ollis/clippets/issues"
+"Homepage" = "https://github.com/paul-ollis/vpe_syntax"
+"Bug Tracker" = "https://github.com/paul-ollis/vpe_syntax/issues"
 
 [project.entry-points.'vpe.plugins']
 vpe_syntax = 'vpe_syntax'

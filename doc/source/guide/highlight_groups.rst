@@ -259,7 +259,7 @@ names`_.
      - keywork "None", "nil", *etc*.
    * - NonStandardSelf
      - Normal
-     - a name that would normall be "selfW, "this", *etc.*
+     - a name that would normally be "self", "this", *etc.*
    * - NumberFloat
      - Float
      - floating-point number literals
