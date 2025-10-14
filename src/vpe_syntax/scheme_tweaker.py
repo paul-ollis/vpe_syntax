@@ -292,7 +292,7 @@ class Tweaker(vpe.CommandHandler, KeyHandler):
                 APP_NAME, buf_class=TweakerBuffer))
         self.mode = 'fg'      # Can also be 'bg', 'sp' and 'attrs'.
         self.hl_group: Highlight
-        self.show_inactive_highlights: bool = False
+        self.show_inactive_highlights: bool = True
         self.active_property_names = _get_used_prop_names()
         self.select_first_highlight_group()
         self.common_widgets: dict[str, Widget] = {}

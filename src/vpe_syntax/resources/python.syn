@@ -28,8 +28,7 @@ integer                            Number
 interpolation                      Interpolation
 is                                 Keyword
 lambda                             Keyword
-None                               Keyword
-none                               None
+value:none                         None
 nonlocal                           Keyword
 not                                Keyword
 operator                           Operator
@@ -45,6 +44,10 @@ while                              Keyword
 with                               Keyword
 
 key:string                         Property
+key:integer                        Property
+key:float                          Property
+key:true                           Property
+key:false                          Property
 type:type                          Type
 
 yield
