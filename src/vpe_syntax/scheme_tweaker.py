@@ -484,22 +484,7 @@ class Tweaker(vpe.CommandHandler, KeyHandler):
     @nmapped(keyseq='N')
     def handle_toggle_none(self, _info: MappingInfo) -> None:
         """Handle the key to toggle NONE for a colour."""
-        if self.hl_group.is_linked:
-            return
-
-        ui_type = self.ui_type
-        if self.hl_group.cterm_copies_gui and ui_type != 'gui':
-            return
-
-        hl_group = self.hl_group
-        attr_name = f'{ui_type}.{self.mode}'
-        colour = hl_group.get_colour(attr_name)
-        with self.undo_group() as undo:
-            undo.append(partial(hl_group.set_colour, colour))
-        if colour is none_colour:
-            hl_group.set_colour(attr_name, default_white)
-        else:
-            hl_group.set_colour(attr_name, none_colour)
+        self.hl_group.toggle_none(f'{self.ui_type}.{self.mode}')
         self.refresh()
 
     @nmapped(keyseq='P')
@@ -1375,7 +1360,7 @@ def create_tweaker_groups():
     """Create highlight groups specific to tweaker."""
     kw: dict['str', Colour]
     for name, data in TWEAKER_GROUPS.items():
-        kw = {'fg': unused_colour, 'bg': unused_colour}
+        kw = {'fg': none_colour, 'bg': none_colour}
         hl_name = f'Tweaker_{name}'
         if 'fg' in data:
             kw['fg'] = Colour.parse(data['fg'])

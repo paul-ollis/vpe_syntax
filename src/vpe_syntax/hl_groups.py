@@ -1,12 +1,11 @@
 """Highlight groups/properties used for syntax highlighting."""
 from __future__ import annotations
 
-from collections import defaultdict
 from colorsys import hls_to_rgb, rgb_to_hls
 from dataclasses import Field, dataclass, field, fields
-from functools import lru_cache, partial
+from functools import lru_cache
 from math import sqrt
-from typing import Callable, ClassVar, TypeAlias
+from typing import ClassVar, Final, TypeAlias
 from weakref import proxy
 
 import vpe
@@ -36,6 +35,8 @@ STANDARD_GROUPS = (
     # The groupings match those in Vim's help. The first entry in a group is
     # the 'preferred' group and the others are considered 'sub-groups'. This
     # set of names and the groupings thereof are somewhat C-centric.
+    ('Normal', 50),
+
     ('Comment', 50),
 
     ('Constant', 50),
@@ -154,6 +155,8 @@ EXT_STANDARD_GROUPS: list[tuple[str, str | None, int]] = [
     ('KeywordRepeat',             'KeyWord',         55),
     ('KeywordReturn',             'KeyWord',         55),
     ('KeywordType',               'KeyWord',         55),
+    ('Markup',                    'Normal',          55),
+    ('MarkupEmphasis',            'Italic',          55),
     ('MarkupHeading1',            'Underlined',      55),
     ('MarkupHeading2',            'Underlined',      55),
     ('MarkupHeading3',            'Underlined',      55),
@@ -469,11 +472,14 @@ class UnusedColour(Colour):
         super().__init__(255, 255, 255, name='_unused_')
 
 
-#: A colour indicating the absence of a real colour value.
-unused_colour = Colour(255, 255, 255, name='_unused_')
+#: A colour used to indicate a HighlightSettings unused colour attribute.
+unused_colour: Final = Colour(255, 255, 255, name='_unused_')
 
 #: A colour indicating that a syntax colour is set as ``NONE``.
-none_colour = Colour(255, 255, 255, name='_none_')
+none_colour: Final = Colour(255, 255, 255, name='_none_')
+
+#: A colour indicating that a previous colour should be restored.
+restore_colour: Final = Colour(255, 255, 255, name='_restore_')
 
 
 @dataclass
@@ -489,20 +495,27 @@ class HighlightSettings:
     italic: bool = False
     standout: bool = False
     nocombine: bool = False
-    fg: Colour = field(default_factory=lambda: unused_colour)
-    bg: Colour = field(default_factory=lambda: unused_colour)
-    sp: Colour = field(default_factory=lambda: unused_colour)
+    fg: Colour = field(default_factory=lambda: none_colour)
+    bg: Colour = field(default_factory=lambda: none_colour)
+    sp: Colour = field(default_factory=lambda: none_colour)
     fg_name: str = ''
     bg_name: str = ''
     sp_name: str = ''
     parent: Highlight | None = None
+
+    shadowed_fg: Colour = field(default_factory=lambda: none_colour)
+    shadowed_bg: Colour = field(default_factory=lambda: none_colour)
+    shadowed_sp: Colour = field(default_factory=lambda: none_colour)
 
     mode: ClassVar[str]
     ortho_map: ClassVar[dict[str, str]] = {
         'strikethrough': 'strike',
     }
     unused: ClassVar[set[str]] = set()
-    meta: ClassVar[set[str]] = set(('fg_name', 'bg_name', 'sp_name'))
+    meta: ClassVar[set[str]] = set((
+        'fg_name', 'bg_name', 'sp_name',
+        'shadowed_fg', 'shadowed_bg', 'shadowed_sp',
+    ))
 
     # TODO:
     #     The Vim docs are contradictory for these values. The highlight
@@ -555,6 +568,28 @@ class HighlightSettings:
                 kw[f.name] = bool(int(value))
         return cls(**kw)                               # type: ignore[arg-type]
 
+    def toggle_none(self, rgb_name: str) -> None:
+        """Toggle the NONE value for a colour attribute."""
+        shadowed_attr = f'shadowed_{rgb_name}'
+        s_colour = getattr(self, shadowed_attr)
+        colour = getattr(self, rgb_name)
+        if colour is none_colour and s_colour is none_colour:
+            highlight = _highlights['Normal']
+            setattr(
+                self, rgb_name,
+                highlight.get_colour(f'{self.mode}.{rgb_name}'))
+        else:
+            setattr(self, rgb_name, s_colour)
+            setattr(self, shadowed_attr, colour)
+
+    def set_colour(self, rgb_name: str, colour: Colour) -> None:
+        """Set a colour for a given attribute name (fg, bg, sp).
+
+        :rgb_name: The name - fg, bg, sp.
+        :colour:   The colour value for the attribute.
+        """
+        setattr(self, rgb_name, Colour.from_colour(colour))
+
     def format_args(self) -> dict:
         """Format the arguments for these settings."""
         attrs = []
@@ -592,7 +627,13 @@ class HighlightSettings:
         return ' '.join(parts)
 
     def __post_init__(self):
-        assert self.fg is not None
+        if self.__class__ is not TermSettings:
+            assert self.fg is not unused_colour
+            assert self.bg is not unused_colour
+            assert self.sp is not unused_colour
+        self.shadowed_fg = none_colour
+        self.shadowed_bg = none_colour
+        self.shadowed_sp = none_colour
 
 
 class TermSettings(HighlightSettings):
@@ -609,6 +650,15 @@ class TermSettings(HighlightSettings):
         inst = self.__class__(**self.__dict__)
         inst.parent = parent
         return inst
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.fg = unused_colour
+        self.bg = unused_colour
+        self.sp = unused_colour
+        self.shadowed_fg = unused_colour
+        self.shadowed_bg = unused_colour
+        self.shadowed_sp = unused_colour
 
 
 class ColourTermSettings(HighlightSettings):
@@ -768,6 +818,8 @@ class Highlight:
         if not self.link:
             return self
         linked_group = _highlights.get(self.link)
+        if linked_group is None:
+            return _highlights['Normal']
         return linked_group.resolve_link()
 
     def get_colour(self, attr: str) -> Colour:
@@ -815,6 +867,16 @@ class Highlight:
             return False
 
     #< Editing
+    def toggle_none(self, attr: str) -> None:
+        """Toggle the NONE value for a colour attribute."""
+        if self.is_linked:
+            return
+
+        mode, rgb_name = attr.split('.')
+        if mode == 'cterm' and self.cterm_copies_gui:
+            return
+        getattr(self, mode).toggle_none(rgb_name)
+
     def set_colour(self, attr: str, colour: Colour) -> None:
         """Set a colour for a given attribute name.
 
@@ -822,10 +884,12 @@ class Highlight:
         :colour: The colour value for the attribute.
         """
         assert colour is not None
+        assert not _is_special_colour(colour)
+
         mode, rgb_name = attr.split('.')
         if mode == 'cterm' and self.cterm_copies_gui:
             return
-        setattr(getattr(self, mode), rgb_name, Colour.from_colour(colour))
+        getattr(self, mode).set_colour(rgb_name, Colour.from_colour(colour))
 
     def set_flag(self, attr: str, value: bool) -> None:
         """Set a the boolean value for a given attribute name.
@@ -1281,3 +1345,13 @@ def __getattr__(name: str) -> DynAttrTypes:
         return _highlights
 
     raise AttributeError(name)
+
+
+def _is_special_colour(colour: Colour) -> bool:
+    if colour is none_colour:
+        return True
+    if colour is unused_colour:
+        return True
+    if colour is restore_colour:
+        return True
+    return False
