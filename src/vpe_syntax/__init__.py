@@ -166,7 +166,7 @@ class Plugin(TopLevelSubcommandHandler):
         """
         buf = vim.current.buffer
         store = buf.retrieve_store('syntax-sitter')
-        if store is not None:
+        if store is not None and store.highlighter is not None:
             # Syntax highlighting is already active.
             store.highlighter.ensure_minimal_syntax()
             return

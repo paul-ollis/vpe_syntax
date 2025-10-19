@@ -328,6 +328,11 @@ class InProgressPropsetOperation:
                 if self.active:
                     self.buf_changed = True
 
+            case ConditionCode.DELETE:
+                # The buffer is being deleted.
+                if self.timer:
+                    self.timer.stop()
+
     def start(self, affected_lines: AffectedLines | None) -> None:
         """Start a new property setting run, if appropriate.
 
@@ -692,10 +697,21 @@ class Highlighter:
     def handle_tree_change(
             self, code: ConditionCode, affected_lines: AffectedLines) -> None:
         """Take action when the buffer's code tree has changed."""
-        if code == ConditionCode.RELOAD:
-            vpe.call_soon(self.ensure_minimal_syntax)
-        else:
-            self.prop_set_operation.handle_tree_change(code, affected_lines)
+        match code:
+            case ConditionCode.RELOAD:
+                vpe.call_soon(self.ensure_minimal_syntax)
+
+            case ConditionCode.DELETE:
+                self.prop_set_operation.handle_tree_change(code, [])
+                store = self.buf.retrieve_store('syntax-sitter')
+                try:
+                    del store.highlighter            # type: ignore[union-attr]
+                except AttributeError:
+                    pass
+
+            case _:
+                self.prop_set_operation.handle_tree_change(
+                    code, affected_lines)
 
     def ensure_minimal_syntax(self) -> None:
         """Ensure only minimal standard syntax highlighting is active."""

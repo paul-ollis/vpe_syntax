@@ -2,6 +2,14 @@
 Change Log
 ==========
 
+Version 0.2.1
+-------------
+
+- Part of fix for https://github.com/paul-ollis/vpe_syntax/issues/7.
+
+  Changes added in version 0.2.1 of VPE-Sitter also required.
+
+
 Version 0.2.0
 -------------
 

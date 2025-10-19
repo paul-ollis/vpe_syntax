@@ -10,7 +10,7 @@
 Welcome to the Tree-sitter support for Vim.
 
 :status:
-    This is version 0.2.0
+    This is version 0.2.1
 
     This is alpha software, but I use it all the time and it has been behaving
     reliably for me.
